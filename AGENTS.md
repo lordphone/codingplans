@@ -38,6 +38,9 @@ FastAPI can be added later if needed for:
 ### Frontend (Angular)
 
 ```bash
+# Navigate to web folder
+cd web
+
 # Install dependencies
 npm install
 
@@ -65,17 +68,17 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run TPS benchmark locally (for testing)
-python scripts/benchmark_tps.py
+python benchmarks/benchmark_tps.py
 
 # Run heavy benchmarks locally
-python scripts/benchmark_heavy.py
+python benchmarks/benchmark_heavy.py
 
 # Linting
 ruff check .
 ruff check --fix .
 
 # Type checking
-mypy scripts/
+mypy benchmarks/
 
 # Format code
 ruff format .
@@ -188,7 +191,7 @@ export class BenchmarkService {
 ```
 
 #### Types/Interfaces
-- Define models in `src/app/models/`
+- Define models in `web/src/app/models/`
 - Use interfaces for data structures
 
 ```typescript
@@ -222,7 +225,7 @@ export type ProviderStatus = 'healthy' | 'throttled' | 'degraded' | 'down';
 ├── .github/
 │   └── workflows/
 │       └── benchmark.yml           # GitHub Actions workflow for TPS benchmarks
-├── scripts/                         # Python benchmark scripts
+├── benchmarks/                      # Python benchmark scripts
 │   ├── benchmark_tps.py            # Lightweight TPS benchmark
 │   ├── benchmark_heavy.py          # Comprehensive benchmark suite
 │   ├── providers/                   # Provider-specific implementations
@@ -233,19 +236,20 @@ export type ProviderStatus = 'healthy' | 'throttled' | 'degraded' | 'down';
 │   ├── models/                      # Pydantic models
 │   ├── utils/                       # Shared utilities
 │   └── config.py                    # Configuration
-├── src/app/                         # Angular frontend
-│   ├── core/                        # Singleton services, guards
-│   ├── features/                    # Feature modules/components
-│   ├── shared/                      # Shared components, pipes, directives
-│   ├── models/                      # TypeScript interfaces
-│   ├── services/                    # Data services (Supabase client)
-│   └── app.component.ts             # Root component
+├── web/                             # Angular frontend
+│   ├── src/app/                     # Application code
+│   │   ├── core/                    # Singleton services, guards
+│   │   ├── features/                # Feature modules/components
+│   │   ├── shared/                  # Shared components, pipes, directives
+│   │   ├── models/                  # TypeScript interfaces
+│   │   ├── services/                # Data services (Supabase client)
+│   │   └── app.component.ts         # Root component
+│   ├── angular.json                 # Angular configuration
+│   └── package.json                 # Node dependencies
 ├── supabase/
 │   └── migrations/                   # Database schema migrations
 ├── tests/                           # Python tests for benchmark scripts
-├── requirements.txt                 # Python dependencies
-├── package.json                     # Node dependencies
-└── angular.json
+└── requirements.txt                 # Python dependencies
 ```
 
 ## Watchdog-Specific Guidelines
