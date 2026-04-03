@@ -6,96 +6,100 @@ A website comparing AI coding plans (Alibaba Cloud Model Studio, Minimax, Kimi, 
 
 ## Tech Stack
 
-- **Frontend**: SvelteKit (SSR, routing, UI)
-- **Backend**: FastAPI (Python) - business logic, benchmarks, scheduling
-- **Database**: PostgreSQL
-- **Job Scheduling**: APScheduler or Celery
-- **Cache**: Redis
+- **Frontend**: Angular (SSR with Angular Universal, routing, UI)
+- **Database**: Supabase (PostgreSQL)
+- **Benchmarking (Lightweight)**: GitHub Actions - TPS benchmarks every 2-4 hours
+- **Benchmarking (Heavy)**: Local machine - comprehensive tests weekly/ad-hoc
+
+## Architecture
+
+```
+Angular ──► Supabase DB ◄── GitHub Actions (TPS, every 2-4h)
+                      ▲
+                      └── Local scripts (heavy benchmarks, manual)
+```
+
+### Why No Backend?
+
+This architecture avoids needing a traditional backend server:
+- **GitHub Actions** handles scheduled lightweight benchmarks
+- **Supabase** provides database + optional Edge Functions if needed later
+- **Local scripts** handle heavy benchmarks with no time limits
+- **Completely free** hosting tier
+
+FastAPI can be added later if needed for:
+- Real-time API endpoints
+- User-triggered benchmarks on-demand
+- Public API for third-party access
+- Webhooks from AI providers
 
 ## Build Commands
 
-### Frontend (SvelteKit)
+### Frontend (Angular)
 
 ```bash
 # Install dependencies
 npm install
 
 # Development server
-npm run dev
+ng serve
 
 # Build for production
-npm run build
+ng build
 
-# Preview production build
-npm run preview
+# Build with SSR
+ng build && ng run app:server
 
 # Run linting
-npm run lint
-
-# Run type checking
-npm run check
-
-# Run a single test
-npm run test -- --run <test-file>
-
-# Or with Playwright
-npx playwright test <test-file>
+ng lint
 ```
 
-### Backend (FastAPI)
+### Benchmark Scripts (Python)
 
 ```bash
 # Create virtual environment
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Run TPS benchmark locally (for testing)
+python scripts/benchmark_tps.py
 
-# Run tests
-pytest
-
-# Run single test
-pytest tests/path/to/test_file.py::test_function_name
-
-# Run with coverage
-pytest --cov=app --cov-report=html
+# Run heavy benchmarks locally
+python scripts/benchmark_heavy.py
 
 # Linting
 ruff check .
 ruff check --fix .
 
 # Type checking
-mypy app/
+mypy scripts/
 
 # Format code
 ruff format .
 ```
 
-### Docker (Full Stack)
+### GitHub Actions
 
 ```bash
-# Build and run all services
-docker-compose up --build
+# Manually trigger workflow
+gh workflow run benchmark.yml
 
-# Run only backend
-docker-compose up backend
+# View workflow runs
+gh run list
 
-# Run tests in container
-docker-compose exec backend pytest
+# View specific run logs
+gh run view <run-id>
 ```
 
 ## Code Style Guidelines
 
-### Python (FastAPI)
+### Python (Benchmark Scripts)
 
 #### Imports
 - Standard library first, then third-party, then local
-- Use absolute imports: `from app.models.user import User`
-- Group: `import` then `from` imports
 - Sort alphabetically within groups
 
 ```python
@@ -103,99 +107,89 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
-import redis
-from fastapi import APIRouter, Depends
+from supabase import create_client
 from pydantic import BaseModel
 
-from app.core.config import settings
-from app.models.provider import Provider
-from app.services.benchmark import BenchmarkService
+from config import settings
+from models.benchmark import BenchmarkResult
 ```
 
 #### Formatting
 - Line length: 100 characters max
-- Use Black formatter (integrated via ruff)
 - 4 spaces for indentation (no tabs)
+- Use ruff format (Black-compatible)
 
 #### Types
 - Use type hints for all function signatures
 - Prefer `Optional[X]` over `X | None`
-- Use `from typing import` for complex types
-
-```python
-def calculate_tps(
-    tokens: int,
-    duration_seconds: float,
-    provider_id: str,
-) -> float:
-    """Calculate tokens per second for a benchmark run."""
-    if duration_seconds <= 0:
-        raise ValueError("Duration must be positive")
-    return tokens / duration_seconds
-```
 
 #### Naming Conventions
 - Variables/functions: `snake_case`
 - Classes: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
-- Private methods: `_leading_underscore`
-- Database models: `PascalCase` with `Table` suffix option
 
-#### Error Handling
-- Use custom exception classes for domain errors
-- Return proper HTTP status codes (404 for not found, 429 for rate limits)
-- Log errors with appropriate level
-
-```python
-class ProviderNotFoundError(Exception):
-    """Raised when a provider cannot be found."""
-    pass
-
-@app.get("/providers/{provider_id}")
-async def get_provider(provider_id: str):
-    provider = await provider_service.get(provider_id)
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
-    return provider
-```
-
-#### Database (SQLAlchemy)
-- Use async SQLAlchemy 2.0 style
-- Define models in `app/models/`
-- Use migrations with Alembic
-
-```python
-class BenchmarkResult(Base):
-    __tablename__ = "benchmark_results"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    provider_id: Mapped[str] = mapped_column(String(50))
-    tps: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-```
-
-### TypeScript/Svelte (Frontend)
+### Angular/TypeScript (Frontend)
 
 #### Imports
-- Group: Svelte imports, then third-party, then local components/utils
-- Absolute imports from `$lib/` for project code
+- Group: Angular core, third-party, then local
+- Use barrel exports (index.ts) where appropriate
 
-```svelte
-<script lang="ts">
-  import { page } from '$app/stores';
-  import type { BenchmarkResult } from '$lib/types';
-  import ProviderCard from '$lib/components/ProviderCard.svelte';
-</script>
+```typescript
+import { Component, OnInit, Input } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
+
+import { ProviderService } from './services/provider.service';
+import { BenchmarkResult } from './models/benchmark-result.model';
+import { ProviderCardComponent } from './components/provider-card/provider-card.component';
 ```
 
-#### Formatting
-- Follow SvelteKit conventions
-- Use ESLint + Prettier (or Svelte's built-in formatter)
-- Max line length: 100
+#### Components
+- Use standalone components (Angular 14+)
+- One file per component when small, co-locate when logical
+- Use OnPush change detection by default
 
-#### Types
-- Define shared types in `$lib/types/`
-- Use interfaces for objects, types for unions
+```typescript
+@Component({
+  selector: 'app-provider-card',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './provider-card.component.html',
+  styleUrls: ['./provider-card.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class ProviderCardComponent implements OnInit {
+  @Input() provider!: Provider;
+  @Output() selected = new EventEmitter<string>();
+  
+  isExpanded = signal(false);
+}
+```
+
+#### Services
+- Use providedIn: 'root' for singleton services
+- Use signals for reactive state (Angular 16+)
+- Use Supabase JS client for database operations
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class BenchmarkService {
+  private supabase = inject(SupabaseService).client;
+  
+  getResults(providerId: string): Observable<BenchmarkResult[]> {
+    return from(
+      this.supabase
+        .from('benchmarks')
+        .select('*')
+        .eq('provider_id', providerId)
+    ).pipe(map(response => response.data));
+  }
+}
+```
+
+#### Types/Interfaces
+- Define models in `src/app/models/`
+- Use interfaces for data structures
 
 ```typescript
 export interface BenchmarkResult {
@@ -203,96 +197,95 @@ export interface BenchmarkResult {
   provider: string;
   tps: number;
   timestamp: Date;
-  peakHours: boolean;
+  source: 'github-actions' | 'local';
+  peak_hours: boolean;
 }
 
 export type ProviderStatus = 'healthy' | 'throttled' | 'degraded' | 'down';
 ```
 
-### Project Structure
+#### Naming Conventions
+- Components: `PascalCase` (e.g., `ProviderListComponent`)
+- Services: `PascalCase` with `Service` suffix
+- Models: `PascalCase` with optional suffix (e.g., `Provider`, `ProviderModel`)
+- Files: `kebab-case` (e.g., `provider-list.component.ts`)
+
+#### Formatting
+- Use ESLint with Angular-specific rules
+- Prettier for code formatting
+- Max line length: 100
+
+## Project Structure
 
 ```
 .
-├── app/                      # FastAPI backend
-│   ├── api/                  # API routes
-│   │   └── v1/
-│   │       ├── providers.py
-│   │       └── benchmarks.py
-│   ├── core/                 # Config, security
-│   ├── models/               # SQLAlchemy models
-│   ├── schemas/              # Pydantic schemas
-│   ├── services/             # Business logic
-│   ├── tasks/                # Background jobs
-│   └── main.py               # App entry point
-├── src/                      # SvelteKit frontend
-│   ├── lib/
-│   │   ├── components/       # Svelte components
-│   │   ├── server/           # Server-side code
-│   │   ├── stores/           # Svelte stores
-│   │   └── types/            # TypeScript types
-│   └── routes/               # SvelteKit pages
-├── tests/                    # Python tests
-│   ├── unit/
-│   └── integration/
-├── docker-compose.yml
-├── requirements.txt
-└── package.json
+├── .github/
+│   └── workflows/
+│       └── benchmark.yml           # GitHub Actions workflow for TPS benchmarks
+├── scripts/                         # Python benchmark scripts
+│   ├── benchmark_tps.py            # Lightweight TPS benchmark
+│   ├── benchmark_heavy.py          # Comprehensive benchmark suite
+│   ├── providers/                   # Provider-specific implementations
+│   │   ├── alibaba.py
+│   │   ├── minimax.py
+│   │   ├── kimi.py
+│   │   └── zai.py
+│   ├── models/                      # Pydantic models
+│   ├── utils/                       # Shared utilities
+│   └── config.py                    # Configuration
+├── src/app/                         # Angular frontend
+│   ├── core/                        # Singleton services, guards
+│   ├── features/                    # Feature modules/components
+│   ├── shared/                      # Shared components, pipes, directives
+│   ├── models/                      # TypeScript interfaces
+│   ├── services/                    # Data services (Supabase client)
+│   └── app.component.ts             # Root component
+├── supabase/
+│   └── migrations/                   # Database schema migrations
+├── tests/                           # Python tests for benchmark scripts
+├── requirements.txt                 # Python dependencies
+├── package.json                     # Node dependencies
+└── angular.json
 ```
 
 ## Watchdog-Specific Guidelines
 
-### Benchmarking
+### Benchmarking Strategy
 
+#### GitHub Actions (Lightweight - TPS)
+- **Frequency**: Every 2-4 hours
+- **Duration**: ~5 minutes max
+- **Metrics**: TPS, TTFT, basic latency
+- **Purpose**: Continuous monitoring, catch peak-hour degradation
+
+#### Local Scripts (Heavy - Comprehensive)
+- **Frequency**: Weekly or ad-hoc
+- **Duration**: Unlimited
+- **Metrics**: Full evaluation suites, complex prompts, quality assessment
+- **Purpose**: Deep analysis, model comparison, quality verification
+
+### Data Tracking
 - Store raw benchmark data, not just aggregated results
 - Track timestamps for all measurements
-- Record provider response headers (rate limits, model versions)
+- Include `source` field: `'github-actions'` or `'local'`
 - Compare against advertised limits, not just historical data
 
-### Model Fingerprinting
-
-- Track response characteristics (token probabilities, timing patterns)
-- Store model identifiers when available
-- Detect quantization through latency patterns
-
 ### Performance Metrics to Track
-
 - TPS under various load conditions
 - Time to first token (TTFT)
 - Peak vs off-peak performance
 - Rate limit behavior vs advertised limits
-- Output consistency (same prompt, different times)
-
-## Database Conventions
-
-- Use migrations for all schema changes
-- Add indexes for frequently queried columns
-- Soft delete where appropriate (use `deleted_at` timestamp)
-- Track `created_at` and `updated_at` on all tables
-
-## API Design
-
-- RESTful endpoints with `/api/v1/` prefix
-- Use proper HTTP verbs (GET, POST, PUT, DELETE)
-- Return consistent JSON response format
-- Version API in URL path
-
-## Testing
-
-- Write unit tests for services
-- Write integration tests for API endpoints
-- Mock external API calls in tests
-- Test edge cases (empty results, errors, rate limits)
-- Include benchmark accuracy tests
+- Model quality degradation over time
 
 ## Security
 
 - Never commit API keys or secrets (use environment variables)
-- Validate all input with Pydantic schemas
-- Use dependency injection for services
-- Implement proper CORS settings
+- Store secrets in GitHub repository secrets for Actions
+- Use Supabase Row Level Security (RLS) for data protection
+- Use Angular's built-in XSS protection
+- Validate all input before storing in database
 
 ## Git Conventions
 
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`
 - Keep commits atomic and focused
-- Write meaningful commit messages
