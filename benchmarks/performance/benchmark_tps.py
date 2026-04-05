@@ -6,7 +6,7 @@ Single run (env):
   LLM_API_KEY or OPENAI_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_PROMPT, LLM_STREAM_USAGE
 
 Matrix run (config):
-  python benchmark_tps.py --config providers.json
+  python benchmarks/performance/benchmark_tps.py --config benchmarks/providers.json
   Copy benchmarks/providers.example.json → benchmarks/providers.json (gitignored).
   Each provider lists api_key_env (secret lives only in your environment).
 
@@ -18,6 +18,17 @@ Load profile:
   One HTTP streaming request at a time (no parallel calls, no batch API). Matrix mode
   starts the next job as soon as the previous finishes unless you set spacing via
   sleep_between_jobs_s in config, BENCHMARK_SLEEP_BETWEEN_JOBS, or --sleep-between-jobs.
+
+  Timing between jobs is randomized automatically. A fixed sleep value is spread to
+  ±50% jitter. Use sleep_min_s / sleep_max_s in config (or --sleep-min / --sleep-max)
+  for explicit control over the random range.
+
+Realistic mode (on by default, disable with --raw):
+  Replaces plain prompts with realistic coding scenarios that mimic IDE sessions.
+  Adds system prompts, multi-turn conversations with code context, and User-Agent
+  headers matching real coding tools (Cursor, Claude Code, Codex, OpenCode, Copilot).
+  Defaults to 2–15 s randomized delay between jobs when no sleep is configured.
+  Scenarios are defined in benchmarks/performance/scenarios.py and can be extended.
 
 Thinking / reasoning models:
   Some APIs stream reasoning in delta.reasoning_content (or delta.reasoning). The script
@@ -33,6 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 import time
 from dataclasses import dataclass
@@ -41,7 +53,7 @@ from typing import Any
 
 import httpx
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _load_dotenv() -> None:
@@ -109,13 +121,20 @@ class BenchmarkJob:
     timeout_s: float
     stream_usage: bool
     extra_params: dict[str, Any] | None = None
+    extra_headers: dict[str, str] | None = None
+    messages: tuple[dict[str, str], ...] | None = None
+    scenario_name: str | None = None
 
 
 def run_benchmark(job: BenchmarkJob) -> dict[str, Any]:
     url = job.base_url.rstrip("/") + "/chat/completions"
+    if job.messages:
+        msg_list = [dict(m) for m in job.messages]
+    else:
+        msg_list = [{"role": "user", "content": job.prompt}]
     payload: dict[str, Any] = {
         "model": job.model,
-        "messages": [{"role": "user", "content": job.prompt}],
+        "messages": msg_list,
         "max_tokens": job.max_tokens,
         "stream": True,
     }
@@ -127,6 +146,8 @@ def run_benchmark(job: BenchmarkJob) -> dict[str, Any]:
         "Authorization": f"Bearer {job.api_key}",
         "Content-Type": "application/json",
     }
+    if job.extra_headers:
+        headers.update(job.extra_headers)
 
     assembled: list[str] = []
     assembled_reasoning: list[str] = []
@@ -217,6 +238,8 @@ def run_benchmark(job: BenchmarkJob) -> dict[str, Any]:
         "thinking_streamed": thinking_streamed,
         "preview": text_out[:200] + ("…" if len(text_out) > 200 else ""),
     }
+    if job.scenario_name:
+        result["scenario"] = job.scenario_name
 
     if t_first_chunk is not None:
         result["ttft_first_chunk_s"] = round(t_first_chunk - request_started, 4)
@@ -338,7 +361,8 @@ def run_matrix(
     *,
     jsonl: bool,
     stop_on_error: bool,
-    sleep_between_jobs_s: float = 0.0,
+    sleep_min_s: float = 0.0,
+    sleep_max_s: float = 0.0,
 ) -> int:
     results: list[dict[str, Any]] = []
     exit_code = 0
@@ -352,14 +376,52 @@ def run_matrix(
                 print(row["error"], file=sys.stderr)
             if stop_on_error:
                 break
-        if sleep_between_jobs_s > 0 and i < n - 1:
-            time.sleep(sleep_between_jobs_s)
+        if sleep_max_s > 0 and i < n - 1:
+            delay = random.uniform(sleep_min_s, sleep_max_s)
+            time.sleep(delay)
     if jsonl:
         for row in results:
             print(json.dumps(row, ensure_ascii=False))
     else:
         print(json.dumps(results, indent=2, ensure_ascii=False))
     return exit_code
+
+
+def _resolve_sleep(data: dict[str, Any], args: argparse.Namespace) -> tuple[float, float]:
+    """Determine (sleep_min, sleep_max) from config, env, and CLI args.
+
+    Priority (highest wins): CLI --sleep-min/--sleep-max > CLI --sleep-between-jobs
+    > config sleep_min_s/sleep_max_s > env BENCHMARK_SLEEP_BETWEEN_JOBS
+    > config sleep_between_jobs_s.
+
+    When only a fixed value is given, it's spread to ±50% jitter automatically.
+    """
+    pause_s = float(data.get("sleep_between_jobs_s", 0.0))
+    if (ev := _env("BENCHMARK_SLEEP_BETWEEN_JOBS")) is not None:
+        try:
+            pause_s = float(ev)
+        except ValueError:
+            pass
+
+    sleep_min = max(0.0, pause_s * 0.5) if pause_s > 0 else 0.0
+    sleep_max = max(0.0, pause_s * 1.5) if pause_s > 0 else 0.0
+
+    cfg_min = data.get("sleep_min_s")
+    cfg_max = data.get("sleep_max_s")
+    if cfg_min is not None or cfg_max is not None:
+        sleep_min = float(cfg_min or 0)
+        sleep_max = float(cfg_max or sleep_min)
+
+    if args.sleep_between_jobs is not None:
+        p = args.sleep_between_jobs
+        sleep_min = max(0.0, p * 0.5)
+        sleep_max = max(0.0, p * 1.5)
+
+    if args.sleep_min is not None or args.sleep_max is not None:
+        sleep_min = float(args.sleep_min or 0)
+        sleep_max = float(args.sleep_max or sleep_min)
+
+    return sleep_min, sleep_max
 
 
 def main() -> int:
@@ -399,6 +461,25 @@ def main() -> int:
         metavar="SEC",
         help="Seconds to pause between matrix jobs (overrides config / BENCHMARK_SLEEP_BETWEEN_JOBS)",
     )
+    parser.add_argument(
+        "--sleep-min",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="Min seconds between jobs for randomized timing (overrides --sleep-between-jobs)",
+    )
+    parser.add_argument(
+        "--sleep-max",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="Max seconds between jobs for randomized timing (overrides --sleep-between-jobs)",
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Disable realistic mode: use plain prompts from config, no IDE headers or jittered timing",
+    )
     args = parser.parse_args()
     _load_dotenv()
 
@@ -421,19 +502,38 @@ def main() -> int:
         if not jobs:
             print("No jobs to run (missing keys, filters, or empty models).", file=sys.stderr)
             return 1
-        pause_s = float(data.get("sleep_between_jobs_s", 0.0))
-        if (ev := _env("BENCHMARK_SLEEP_BETWEEN_JOBS")) is not None:
-            try:
-                pause_s = float(ev)
-            except ValueError:
-                pass
-        if args.sleep_between_jobs is not None:
-            pause_s = args.sleep_between_jobs
+        sleep_min, sleep_max = _resolve_sleep(data, args)
+
+        if not args.raw:
+            from scenarios import pick_scenario
+
+            realistic_jobs: list[BenchmarkJob] = []
+            for job in jobs:
+                sc = pick_scenario()
+                realistic_jobs.append(BenchmarkJob(
+                    provider_id=job.provider_id,
+                    base_url=job.base_url,
+                    api_key=job.api_key,
+                    model=job.model,
+                    prompt=job.prompt,
+                    max_tokens=job.max_tokens,
+                    timeout_s=job.timeout_s,
+                    stream_usage=job.stream_usage,
+                    extra_params=job.extra_params,
+                    extra_headers=sc.extra_headers,
+                    messages=sc.messages,
+                    scenario_name=sc.name,
+                ))
+            jobs = realistic_jobs
+            if sleep_max <= 0:
+                sleep_min, sleep_max = 2.0, 15.0
+
         return run_matrix(
             jobs,
             jsonl=args.jsonl,
             stop_on_error=args.stop_on_error,
-            sleep_between_jobs_s=max(0.0, pause_s),
+            sleep_min_s=sleep_min,
+            sleep_max_s=sleep_max,
         )
 
     # Legacy single env run
@@ -453,6 +553,18 @@ def main() -> int:
         "Write a short paragraph explaining what token throughput means for LLM APIs.",
     )
     stream_usage = _truthy(_env("LLM_STREAM_USAGE"))
+
+    extra_headers: dict[str, str] | None = None
+    messages: tuple[dict[str, str], ...] | None = None
+    scenario_name: str | None = None
+    if not args.raw:
+        from scenarios import pick_scenario
+
+        sc = pick_scenario()
+        extra_headers = sc.extra_headers
+        messages = sc.messages
+        scenario_name = sc.name
+
     job = BenchmarkJob(
         provider_id="env",
         base_url=base_url or "https://api.openai.com/v1",
@@ -463,6 +575,9 @@ def main() -> int:
         timeout_s=120.0,
         stream_usage=stream_usage,
         extra_params=None,
+        extra_headers=extra_headers,
+        messages=messages,
+        scenario_name=scenario_name,
     )
 
     row = _run_one(job)

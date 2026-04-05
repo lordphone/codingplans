@@ -32,8 +32,7 @@ ng build          # Production build
 ### Python Scripts
 
 ```bash
-python benchmarks/benchmark_tps.py
-python benchmarks/benchmark_heavy.py
+python benchmarks/performance/benchmark_tps.py --config benchmarks/providers.json
 ```
 
 ## Project Structure
@@ -42,6 +41,10 @@ python benchmarks/benchmark_heavy.py
 .
 ├── .github/workflows/
 ├── benchmarks/
+│   ├── performance/       # TPS, TTFT benchmarks (realistic coding scenarios)
+│   ├── quantize/          # Model quality / quantization testing
+│   ├── providers.json     # Shared provider config (gitignored)
+│   └── providers.example.json
 ├── web/                   # Angular frontend
 │   └── src/
 │       └── app/
@@ -51,6 +54,18 @@ python benchmarks/benchmark_heavy.py
 ├── supabase/
 └── requirements.txt
 ```
+
+## Database (Supabase)
+
+**Source of truth:** the live Postgres schema in Supabase (SQL Editor / migrations). Do not treat the frontend types file as authoritative if it drifts.
+
+**Core tables:** `providers` → `plans` (`provider_id`); `models`; `plan_models` (`plan_id`, `model_id`) for many-to-many; `benchmark_runs` for time-series metrics per plan+model (wide columns: e.g. `tps`, `ttft_s`, nullable `quantization`).
+
+**App reads:** nested `.select()` from `providers` through `plans` → `plan_models` → `models` (requires FKs). Load `benchmark_runs` in a second query (or later a view) and merge in the app for latest metrics.
+
+**RLS:** `anon` = read-only `SELECT` on public directory data; benchmark scripts and dashboard use **service role** for writes.
+
+**Types:** `web/src/app/types/database.types.ts` should match tables; prefer `supabase gen types typescript` when using the CLI.
 
 ## Security
 

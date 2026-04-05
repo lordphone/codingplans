@@ -3,6 +3,8 @@
   "max_tokens": 256,
   "timeout_s": 120,
   "stream_usage": false,
+  "sleep_min_s": 2,
+  "sleep_max_s": 15,
   "providers": [
     {
       "id": "alibaba-coding-plan",
