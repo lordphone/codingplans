@@ -42,7 +42,12 @@ python benchmarks/benchmark_heavy.py
 .
 ├── .github/workflows/
 ├── benchmarks/
-├── web/              # Angular frontend
+├── web/                   # Angular frontend
+│   └── src/
+│       └── app/
+│           ├── services/  # API services (Supabase)
+│           ├── types/     # TypeScript interfaces
+│           └── pages/
 ├── supabase/
 └── requirements.txt
 ```
