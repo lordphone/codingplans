@@ -1,7 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { SupabaseService } from '../../services/supabase.service';
 
 interface Plan {
   id: string;
@@ -37,8 +38,8 @@ interface Provider {
     <!-- Search Bar -->
     <div class="mb-12">
       <div class="relative">
-        <input 
-          type="text" 
+        <input
+          type="text"
           [(ngModel)]="searchQuery"
           (input)="onSearch()"
           placeholder="Search providers, plans, models..."
@@ -121,8 +122,10 @@ interface Provider {
   `
 })
 export class DirectoryComponent {
+  private supabase = inject(SupabaseService);
+
   searchQuery = '';
-  
+
   providers: Provider[] = [
     {
       id: 'alibaba-model-studio',
@@ -180,7 +183,7 @@ export class DirectoryComponent {
     if (!this.searchQuery.trim()) {
       return this.providers;
     }
-    
+
     const query = this.searchQuery.toLowerCase();
     return this.providers
       .map(provider => {
@@ -200,5 +203,16 @@ export class DirectoryComponent {
 
   onSearch(): void {
     // Reactive filtering happens via getters
+  }
+
+  // Example: Load data from Supabase (call this when ready)
+  async loadFromDatabase() {
+    try {
+      const providers = await this.supabase.getData('providers');
+      console.log('Providers from DB:', providers);
+      // Transform and use the data as needed
+    } catch (error) {
+      console.error('Failed to load:', error);
+    }
   }
 }
