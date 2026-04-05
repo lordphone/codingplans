@@ -6,7 +6,7 @@ A website comparing AI coding plans that monitors whether providers deliver prom
 
 ## Tech Stack
 
-- **Frontend**: Angular
+- **Frontend**: Angular + Tailwind CSS
 - **Database**: Supabase (PostgreSQL)
 - **Benchmarking**: GitHub Actions (lightweight) + Local scripts (heavy)
 
@@ -56,3 +56,20 @@ python benchmarks/benchmark_heavy.py
 
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`
 - Keep commits atomic
+
+## Sitemap
+
+```
+/                          # Landing / hero page
+/directory                 # All providers, filterable (main comparison table)
+/directory/[provider]      # Provider detail - their plans, models, meta
+/directory/[provider]/[plan]  # Specific plan detail - models, pricing, benchmarks
+/models                    # Model-centric view - all models, cross-provider
+/models/[model]            # Model detail - which providers/plans offer it, scores
+/benchmarks                # Benchmark explorer / leaderboard
+```
+
+**URL Examples:**
+- `/directory/alibaba-model-studio` → Provider page
+- `/directory/alibaba-model-studio/lite` → Plan detail page
+- `/models/qwen-2.5` → Model page showing all plans with this model
