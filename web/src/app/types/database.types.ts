@@ -25,3 +25,41 @@ export interface Model {
   slug: string;
   description?: string;
 }
+
+export interface PlanModel {
+  plan_id: string;
+  model_id: string;
+}
+
+export type MetricType = 'tps' | 'latency' | 'quality' | 'price';
+
+export interface Benchmark {
+  id: string;
+  plan_id: string;
+  model_id: string;
+  metric_type: MetricType;
+  value: number;
+  unit: string;
+  recorded_at: string;
+}
+
+// Display types for UI (not database tables)
+export interface DisplayPlan {
+  id: string;
+  name: string;
+  subtitle: string;
+  models: string;
+  tps: number;
+  tpsPercent: number;
+  quantization: string;
+  quantizationStatus: 'scam' | 'verified';
+  price: string;
+  period: string;
+}
+
+export interface DisplayProvider {
+  id: string;
+  name: string;
+  providerId: string;
+  plans: DisplayPlan[];
+}
