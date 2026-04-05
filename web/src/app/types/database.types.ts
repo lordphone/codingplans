@@ -31,16 +31,28 @@ export interface PlanModel {
   model_id: string;
 }
 
-export type MetricType = 'tps' | 'latency' | 'quality' | 'price';
-
-export interface Benchmark {
+/** Latest row per plan+model is resolved in the app (see SupabaseService). */
+export interface BenchmarkRunRow {
   id: string;
   plan_id: string;
   model_id: string;
-  metric_type: MetricType;
-  value: number;
-  unit: string;
+  tps: number | null;
+  ttft_s: number | null;
+  quantization: string | null;
   recorded_at: string;
+}
+
+export interface PlanModelJoin {
+  model_id: string;
+  models: Model | null;
+}
+
+export interface PlanWithRelations extends Plan {
+  plan_models?: PlanModelJoin[] | null;
+}
+
+export interface ProviderWithPlans extends Provider {
+  plans?: PlanWithRelations[] | null;
 }
 
 // Display types for UI (not database tables)
@@ -58,8 +70,22 @@ export interface DisplayPlan {
 }
 
 export interface DisplayProvider {
+  /** URL segment: provider `slug` from the database */
   id: string;
   name: string;
-  providerId: string;
   plans: DisplayPlan[];
+}
+
+export interface PlanDetailView {
+  id: string;
+  name: string;
+  tierId: string;
+  price: string;
+  period: string;
+  modelTarget: string;
+  quantization: string;
+  quantizationColor: 'tertiary' | 'secondary';
+  tps: string;
+  notice: string;
+  isPro: boolean;
 }
