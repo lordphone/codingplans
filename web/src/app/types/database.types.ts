@@ -1,10 +1,12 @@
+/** Row shapes for Supabase `public.*` tables (UUIDs as strings in JSON). */
+
 export interface Provider {
   id: string;
   name: string;
   slug: string;
-  description?: string;
-  website_url?: string;
-  logo_url?: string;
+  description: string | null;
+  website_url: string | null;
+  logo_url: string | null;
   created_at: string;
 }
 
@@ -13,8 +15,8 @@ export interface Plan {
   provider_id: string;
   name: string;
   slug: string;
-  description?: string;
-  price_per_month?: number;
+  description: string | null;
+  price_per_month: number | null;
   currency: string;
   is_active: boolean;
 }
@@ -23,27 +25,45 @@ export interface Model {
   id: string;
   name: string;
   slug: string;
-  description?: string;
+  description: string | null;
 }
 
+/** Junction: which models are included in a plan. */
 export interface PlanModel {
   plan_id: string;
   model_id: string;
 }
 
-export type MetricType = 'tps' | 'latency' | 'quality' | 'price';
-
-export interface Benchmark {
+/**
+ * One benchmark run for a plan + model (wide metrics, Option B).
+ * Nullable metric columns = not measured on this run.
+ */
+export interface BenchmarkRun {
   id: string;
   plan_id: string;
   model_id: string;
-  metric_type: MetricType;
-  value: number;
-  unit: string;
-  recorded_at: string;
+  run_at: string;
+  tps: number | null;
+  ttft_s: number | null;
+  quantization: string | null;
 }
 
-// Display types for UI (not database tables)
+// --- Nested `.select()` result shapes (PostgREST embeds) ---
+
+export interface PlanModelWithModel extends PlanModel {
+  models: Model;
+}
+
+export interface PlanWithModels extends Plan {
+  plan_models: PlanModelWithModel[];
+}
+
+export interface ProviderWithPlansAndModels extends Provider {
+  plans: PlanWithModels[];
+}
+
+// --- Display types for UI (not database tables) ---
+
 export interface DisplayPlan {
   id: string;
   name: string;
