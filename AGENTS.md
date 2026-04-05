@@ -1,4 +1,4 @@
-# AI Coding Plan Comparison & Watchdog - Agent Guidelines
+# AI Coding Plan Comparison - Agent Guidelines
 
 ## Project Overview
 
@@ -65,16 +65,16 @@ python benchmarks/benchmark_heavy.py
 ## Sitemap
 
 ```
-/                          # Landing / hero page
+/                          # Redirects to /directory
 /directory                 # All providers, filterable (main comparison table)
-/directory/[provider]      # Provider detail - their plans, models, meta
-/directory/[provider]/[plan]  # Specific plan detail - models, pricing, benchmarks
-/models                    # Model-centric view - all models, cross-provider
-/models/[model]            # Model detail - which providers/plans offer it, scores
-/benchmarks                # Benchmark explorer / leaderboard
+/directory/:providerId     # Provider detail - their plans, models, meta
+/directory/:providerId/:planId  # Specific plan detail - models, pricing, benchmarks
+/models                    # Model-centric view - placeholder
+/benchmarks                # Benchmark explorer / placeholder
 ```
 
 **URL Examples:**
 - `/directory/alibaba-model-studio` → Provider page
 - `/directory/alibaba-model-studio/lite` → Plan detail page
-- `/models/qwen-2.5` → Model page showing all plans with this model
+
+**Note:** Provider detail handles both :providerId and :planId routes. Models and benchmarks pages are placeholders.
