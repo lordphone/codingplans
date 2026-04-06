@@ -162,7 +162,7 @@ describe('DirectoryComponent', () => {
     const { fixture } = await setup(() => Promise.resolve(mockProviders()));
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Plan Comparison Log');
+    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Provider & Plan Directory');
     expect(el.textContent).toContain('Test Provider');
     expect(el.textContent).toContain('Tier');
     expect(el.textContent).toContain('Quantization');
