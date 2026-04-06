@@ -45,8 +45,9 @@ export class SupabaseService {
   }
 
   /**
-   * Directory listing: nested providers → plans → plan_models → models, plus latest benchmark per (plan_id, model_id).
-   * Usage limits are not in schema yet (`usageLabel` is '—').
+   * Directory listing: nested providers → plans → plan_models → models, plus **rolling 7-day averages**
+   * of TPS and TTFT per (plan_id, model_id) from `benchmark_runs`. Quantization label is taken from the
+   * **most recent** run in that window (non-null only). Usage limits are not in schema yet (`usageLabel` is '—').
    */
   async fetchDirectoryFromSupabase(): Promise<DirectoryProvider[]> {
     const { data: raw, error: providersError } = await this.supabase
@@ -63,28 +64,24 @@ export class SupabaseService {
       ...new Set(providers.flatMap(p => (p.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id)))
     ];
 
-    const runByPlanModel = new Map<string, BenchmarkRun>();
+    const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
     if (planIds.length > 0) {
+      const sinceIso = rollingWindowStartUtcIso(BENCHMARK_ROLLING_DAYS);
       const { data: runsRaw, error: benchError } = await this.supabase
         .from('benchmark_runs')
         .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
         .in('plan_id', planIds)
-        .order('run_at', { ascending: false });
+        .gte('run_at', sinceIso);
 
       if (benchError) {
         throw benchError;
       }
 
-      for (const row of runsRaw ?? []) {
-        const r = row as BenchmarkRun;
-        const key = `${r.plan_id}:${r.model_id}`;
-        if (!runByPlanModel.has(key)) {
-          runByPlanModel.set(key, r);
-        }
-      }
+      const runs = (runsRaw ?? []) as BenchmarkRun[];
+      buildSevenDayStatsIntoMap(runs, statsByPlanModel);
     }
 
-    return mapProvidersToDirectory(providers, runByPlanModel);
+    return mapProvidersToDirectory(providers, statsByPlanModel);
   }
 
   async getData(table: string) {
@@ -100,23 +97,87 @@ export class SupabaseService {
   }
 }
 
+/** How far back to include runs when computing directory performance averages (Option A: aggregate in app). */
+const BENCHMARK_ROLLING_DAYS = 7;
+
+/** Averages + latest-quantization metadata for one (plan_id, model_id) in the window. */
+interface PlanModelBenchmarkStats {
+  avgTps: number | null;
+  avgTtftS: number | null;
+  /** From the newest run in the window that had non-null `quantization`. */
+  quantization: string | null;
+}
+
+function rollingWindowStartUtcIso(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString();
+}
+
+function buildSevenDayStatsIntoMap(rows: BenchmarkRun[], target: Map<string, PlanModelBenchmarkStats>): void {
+  type Acc = {
+    tpsValues: number[];
+    ttftValues: number[];
+    latestQ: { text: string; at: string } | null;
+  };
+
+  const accByKey = new Map<string, Acc>();
+  for (const r of rows) {
+    const key = `${r.plan_id}:${r.model_id}`;
+    let acc = accByKey.get(key);
+    if (!acc) {
+      acc = { tpsValues: [], ttftValues: [], latestQ: null };
+      accByKey.set(key, acc);
+    }
+
+    if (r.tps != null && !Number.isNaN(Number(r.tps))) {
+      acc.tpsValues.push(Number(r.tps));
+    }
+    if (r.ttft_s != null && !Number.isNaN(Number(r.ttft_s))) {
+      acc.ttftValues.push(Number(r.ttft_s));
+    }
+
+    const q = r.quantization?.trim();
+    if (q) {
+      if (!acc.latestQ || r.run_at > acc.latestQ.at) {
+        acc.latestQ = { text: q, at: r.run_at };
+      }
+    }
+  }
+
+  for (const [key, acc] of accByKey) {
+    const avgTps =
+      acc.tpsValues.length > 0 ? acc.tpsValues.reduce((s, x) => s + x, 0) / acc.tpsValues.length : null;
+    const avgTtftS =
+      acc.ttftValues.length > 0
+        ? acc.ttftValues.reduce((s, x) => s + x, 0) / acc.ttftValues.length
+        : null;
+
+    target.set(key, {
+      avgTps,
+      avgTtftS,
+      quantization: acc.latestQ?.text ?? null
+    });
+  }
+}
+
 function mapProvidersToDirectory(
   providers: ProviderWithPlansAndModels[],
-  runByPlanModel: Map<string, BenchmarkRun>
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>
 ): DirectoryProvider[] {
   return providers
-    .map(p => mapOneProvider(p, runByPlanModel))
+    .map(p => mapOneProvider(p, statsByPlanModel))
     .filter(dp => dp.plans.length > 0);
 }
 
 function mapOneProvider(
   provider: ProviderWithPlansAndModels,
-  runByPlanModel: Map<string, BenchmarkRun>
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>
 ): DirectoryProvider {
   const plans = (provider.plans ?? [])
     .filter(pl => pl.is_active)
     .sort((a, b) => comparePlansByPriceThenName(a, b))
-    .map(pl => mapOnePlan(pl, runByPlanModel))
+    .map(pl => mapOnePlan(pl, statsByPlanModel))
     .filter((pl): pl is DirectoryPlan => pl !== null);
 
   return {
@@ -144,7 +205,7 @@ function comparePlansByPriceThenName(
 
 function mapOnePlan(
   plan: ProviderWithPlansAndModels['plans'][number],
-  runByPlanModel: Map<string, BenchmarkRun>
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>
 ): DirectoryPlan | null {
   const junctions = [...(plan.plan_models ?? [])].sort((a, b) => {
     const na = a.models?.name ?? '';
@@ -158,15 +219,15 @@ function mapOnePlan(
     if (!model?.slug) {
       continue;
     }
-    const run = runByPlanModel.get(`${plan.id}:${pm.model_id}`);
-    const quantText = run?.quantization?.trim() || '—';
+    const stats = statsByPlanModel.get(`${plan.id}:${pm.model_id}`);
+    const quantText = stats?.quantization?.trim() || '—';
 
     modelRows.push({
       rowId: `${plan.slug}:${model.slug}`,
       modelName: model.name,
       usageLabel: USAGE_PLACEHOLDER,
-      tps: run?.tps ?? 0,
-      ttftS: run?.ttft_s ?? null,
+      tps: stats?.avgTps != null ? Math.round(stats.avgTps) : 0,
+      ttftS: stats?.avgTtftS ?? null,
       quantization: quantText,
       quantizationStatus: inferQuantizationStatus(quantText)
     });
