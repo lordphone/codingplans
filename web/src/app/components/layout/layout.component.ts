@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { APP_VERSION } from '../../version';
 
 @Component({
   selector: 'app-layout',
@@ -13,7 +14,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           <a routerLink="/" class="text-xl font-light tracking-[0.5em] text-zinc-900 uppercase">
             CODING PLAN COMPARISON
           </a>
-          <span class="font-mono text-[9px] text-zinc-400 uppercase">V 1.0.4</span>
+          <span class="font-mono text-[9px] text-zinc-400 uppercase">v{{ appVersion }}</span>
         </div>
         <div class="flex gap-12">
           <a routerLink="/directory" 
@@ -37,4 +38,6 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
     </div>
   `
 })
-export class LayoutComponent {}
+export class LayoutComponent {
+  readonly appVersion = APP_VERSION;
+}

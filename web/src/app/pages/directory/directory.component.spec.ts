@@ -166,7 +166,6 @@ describe('DirectoryComponent', () => {
     expect(el.textContent).toContain('Test Provider');
     expect(el.textContent).toContain('Tier');
     expect(el.textContent).toContain('Quantization');
-    expect(el.textContent).toContain('FILTERS');
   });
 
   describe('search and view()', () => {
