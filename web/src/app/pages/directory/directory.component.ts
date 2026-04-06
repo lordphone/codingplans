@@ -29,7 +29,9 @@ function modelRowMatchesQuery(
     row.usageLabel.toLowerCase().includes(query) ||
     row.quantization.toLowerCase().includes(query) ||
     plan.name.toLowerCase().includes(query) ||
-    provider.name.toLowerCase().includes(query)
+    plan.id.toLowerCase().includes(query) ||
+    provider.name.toLowerCase().includes(query) ||
+    provider.id.toLowerCase().includes(query)
   );
 }
 
@@ -49,7 +51,7 @@ function filterProvidersForSearch(providers: DirectoryProvider[], rawQuery: stri
         }))
         .filter(plan => plan.modelRows.length > 0)
     }))
-    .filter(p => p.plans.length > 0 || p.name.toLowerCase().includes(query));
+    .filter(p => p.plans.length > 0);
 }
 
 function buildDirectoryView(providers: DirectoryProvider[], rawQuery: string): DirectoryViewModel {
@@ -64,7 +66,7 @@ function buildDirectoryView(providers: DirectoryProvider[], rawQuery: string): D
   return { providers: filtered, rowCount, maxTps };
 }
 
-function tpsBarPercent(tps: number, maxTps: number): number {
+function computeTpsBarPercent(tps: number, maxTps: number): number {
   if (maxTps <= 0) return 0;
   return Math.round((tps / maxTps) * 100);
 }
@@ -78,6 +80,21 @@ function tpsBarPercent(tps: number, maxTps: number): number {
 })
 export class DirectoryComponent implements OnInit {
   private readonly supabase = inject(SupabaseService);
+
+  /** Shared `<th>` classes (bordered columns vs last column). */
+  readonly tableHeadCellClass =
+    'border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600';
+  readonly tableHeadLastCellClass =
+    'bg-zinc-50 px-4 py-3 text-right font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600';
+
+  readonly tableHeadColumns = [
+    { id: 'tier', label: 'Tier' },
+    { id: 'model', label: 'Model' },
+    { id: 'quantization', label: 'Quantization' },
+    { id: 'performance', label: 'Performance' },
+    { id: 'usage', label: 'Usage limits' },
+    { id: 'cost', label: 'Cost' }
+  ] as const;
 
   readonly searchQuery = signal('');
   readonly providers = signal<DirectoryProvider[]>([]);
@@ -105,8 +122,8 @@ export class DirectoryComponent implements OnInit {
     }
   }
 
-  barWidthPercent(tps: number, maxTps: number): number {
-    return tpsBarPercent(tps, maxTps);
+  tpsBarPercent(tps: number, maxTps: number): number {
+    return computeTpsBarPercent(tps, maxTps);
   }
 
   formatTtft(seconds: number | null): string {

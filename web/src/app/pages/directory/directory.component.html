@@ -1,8 +1,6 @@
 <!-- Filters rail: directory route only; wire real filters when product is ready -->
-<aside class="fixed left-0 top-16 w-64 h-full flex flex-col p-8 gap-6 bg-zinc-50 border-r border-zinc-200">
-  <div class="flex flex-col gap-1">
-    <span class="font-mono text-[11px] uppercase tracking-wider text-emerald-700 font-bold">FILTERS</span>
-  </div>
+<aside class="fixed left-0 top-16 w-64 h-full flex flex-col gap-6 bg-zinc-50 border-r border-zinc-200 p-8">
+  <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-700">FILTERS</span>
   <nav class="flex flex-col gap-4">
     <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">MODELS</span>
     <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">PROVIDERS</span>
@@ -43,6 +41,16 @@
     </div>
   </div>
 
+  @if (!loading() && !loadError() && vm.providers.length === 0) {
+    <p class="mb-8 font-mono text-sm text-zinc-500">
+      @if (searchQuery().trim()) {
+        No directory entries match your search.
+      } @else {
+        No providers in the directory yet.
+      }
+    </p>
+  }
+
   <div class="w-full space-y-12">
     @for (provider of vm.providers; track provider.id) {
       <section class="space-y-4">
@@ -65,40 +73,17 @@
             </colgroup>
             <thead>
               <tr class="border-b border-zinc-200">
-                <th
-                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
-                >
-                  Tier
-                </th>
-                <th
-                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
-                >
-                  Model
-                </th>
-                <th
-                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
-                >
-                  Quantization
-                </th>
-                <th
-                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
-                >
-                  Performance
-                </th>
-                <th
-                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
-                >
-                  Usage limits
-                </th>
-                <th class="bg-zinc-50 px-4 py-3 text-right font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600">
-                  Cost
-                </th>
+                @for (col of tableHeadColumns; track col.id) {
+                  <th scope="col" [class]="col.id === 'cost' ? tableHeadLastCellClass : tableHeadCellClass">
+                    {{ col.label }}
+                  </th>
+                }
               </tr>
             </thead>
             <tbody>
               @for (plan of provider.plans; track plan.id) {
                 @for (modelRow of plan.modelRows; track modelRow.rowId; let rowIdx = $index) {
-                  <tr class="border-b border-zinc-100 bg-white hover:bg-zinc-50/60">
+                  <tr class="border-b border-zinc-200 bg-white hover:bg-zinc-50/60">
                     @if (rowIdx === 0) {
                       <td
                         [attr.rowspan]="plan.modelRows.length"
@@ -145,7 +130,7 @@
                           <span class="w-9 shrink-0 text-right font-mono text-[10px] font-medium uppercase text-zinc-600">TPS</span>
                           <div class="flex min-w-0 flex-1 items-center gap-2">
                             <div class="h-2 min-w-0 flex-1 rounded-[1px] bg-zinc-200">
-                              <div class="h-full rounded-[1px] bg-zinc-900" [style.width.%]="barWidthPercent(modelRow.tps, vm.maxTps)"></div>
+                              <div class="h-full rounded-[1px] bg-zinc-900" [style.width.%]="tpsBarPercent(modelRow.tps, vm.maxTps)"></div>
                             </div>
                             <span class="w-8 shrink-0 text-right font-mono text-[11px] tabular-nums text-zinc-900">{{ modelRow.tps }}</span>
                           </div>
