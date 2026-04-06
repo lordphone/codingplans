@@ -105,20 +105,20 @@
                         <div class="flex items-start gap-2">
                           <span
                             class="min-w-0 flex-1 font-mono text-[11px] leading-snug uppercase"
-                            [class.text-amber-800]="modelRow.quantizationStatus === 'untested'"
+                            [class.text-zinc-500]="modelRow.quantizationStatus === 'untested'"
                             [class.text-tertiary]="modelRow.quantizationStatus === 'scam'"
                             [class.text-secondary]="modelRow.quantizationStatus === 'verified'"
                             >{{ modelRow.quantization }}</span>
                           <div
                             class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px]"
                             [ngClass]="{
-                              'bg-amber-400 border border-amber-600': modelRow.quantizationStatus === 'untested',
+                              'bg-zinc-300 border border-zinc-400': modelRow.quantizationStatus === 'untested',
                               'bg-tertiary': modelRow.quantizationStatus === 'scam',
                               'bg-secondary': modelRow.quantizationStatus === 'verified'
                             }"
                           ></div>
                         </div>
-                        @if (modelRow.quantizationStatus === 'scam') {
+                        @if (showsQuantizationLossNotice(modelRow)) {
                           <span class="font-mono text-[9px] uppercase leading-tight tracking-wide text-tertiary"
                             >Loss Detected</span>
                         }

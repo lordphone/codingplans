@@ -278,9 +278,13 @@ function mapOnePlan(
 
 const USAGE_PLACEHOLDER = '—';
 
+/** Low-bit integer weights (INT4/INT8, etc.) — flag like provider-detail “aggressive” tiers (red, not FP16-green). */
 function inferQuantizationStatus(quantization: string): 'scam' | 'verified' {
   const q = quantization.toLowerCase();
   if (q.includes('scam') || /\breset\b/.test(q)) {
+    return 'scam';
+  }
+  if (/\bint4\b|\bint8\b/.test(q) || q.includes('int8/4') || q.includes('int4/8')) {
     return 'scam';
   }
   return 'verified';

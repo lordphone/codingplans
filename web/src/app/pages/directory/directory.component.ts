@@ -135,4 +135,13 @@ export class DirectoryComponent implements OnInit {
     }
     return `${seconds.toFixed(2)} s`;
   }
+
+  /** “Loss Detected” only when the benchmark label calls out scam/reset; INT4/INT8 are red without this line. */
+  showsQuantizationLossNotice(row: DirectoryModelRow): boolean {
+    if (row.quantizationStatus !== 'scam') {
+      return false;
+    }
+    const q = row.quantization.toLowerCase();
+    return q.includes('scam') || /\breset\b/.test(q);
+  }
 }
