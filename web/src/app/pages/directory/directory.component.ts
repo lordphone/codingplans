@@ -1,43 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  OnInit,
+  signal
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-
-type QuantizationStatus = 'scam' | 'verified';
-
-/** One line in the grid: a single model under a plan with its own benchmarks. */
-interface DirectoryModelRow {
-  /** Stable key for @for track (plan slug + model slug or similar). */
-  rowId: string;
-  modelName: string;
-  /** Monthly usage cap / policy copy (maps to product limits later). */
-  usageLabel: string;
-  tps: number;
-  /** Time to first token in seconds; null when not measured. */
-  ttftS: number | null;
-  quantization: string;
-  quantizationStatus: QuantizationStatus;
-}
-
-interface DirectoryPlan {
-  id: string;
-  name: string;
-  subtitle: string;
-  price: string;
-  period: string;
-  modelRows: DirectoryModelRow[];
-}
-
-interface DirectoryProvider {
-  id: string;
-  name: string;
-  providerId: string;
-  plans: DirectoryPlan[];
-}
+import { SupabaseService } from '../../services/supabase.service';
+import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider, QuantizationStatus } from './directory.models';
 
 interface DirectoryViewModel {
   providers: DirectoryProvider[];
-  /** Total model rows (grid lines) after search */
   rowCount: number;
   maxTps: number;
 }
@@ -51,6 +27,7 @@ function modelRowMatchesQuery(
   return (
     row.modelName.toLowerCase().includes(query) ||
     row.usageLabel.toLowerCase().includes(query) ||
+    row.quantization.toLowerCase().includes(query) ||
     plan.name.toLowerCase().includes(query) ||
     provider.name.toLowerCase().includes(query)
   );
@@ -92,104 +69,6 @@ function tpsBarPercent(tps: number, maxTps: number): number {
   return Math.round((tps / maxTps) * 100);
 }
 
-const DIRECTORY_SEED_PROVIDERS: DirectoryProvider[] = [
-  {
-    id: 'alibaba-model-studio',
-    name: 'Alibaba Model Studio',
-    providerId: 'BABA-99',
-    plans: [
-      {
-        id: 'lite',
-        name: 'Lite',
-        subtitle: 'Entry Level Core',
-        price: '$10.00',
-        period: '/ Month',
-        modelRows: [
-          {
-            rowId: 'lite-qwen-2-5',
-            modelName: 'Qwen 2.5',
-            usageLabel: '300K tokens / mo · shared pool',
-            tps: 45.2,
-            ttftS: 0.38,
-            quantization: 'INT4 SCAM',
-            quantizationStatus: 'scam'
-          },
-          {
-            rowId: 'lite-glm-4',
-            modelName: 'GLM-4',
-            usageLabel: '300K tokens / mo · shared pool',
-            tps: 52.1,
-            ttftS: 0.29,
-            quantization: 'FP16 FULL',
-            quantizationStatus: 'verified'
-          }
-        ]
-      },
-      {
-        id: 'pro',
-        name: 'Pro',
-        subtitle: 'Advanced Enterprise',
-        price: '$50.00',
-        period: '/ Month',
-        modelRows: [
-          {
-            rowId: 'pro-qwen-2-5',
-            modelName: 'Qwen 2.5',
-            usageLabel: '2M tokens / mo · priority',
-            tps: 98.4,
-            ttftS: 0.31,
-            quantization: 'FP16 FULL',
-            quantizationStatus: 'verified'
-          },
-          {
-            rowId: 'pro-kimi-k2-5',
-            modelName: 'Kimi K2.5',
-            usageLabel: '2M tokens / mo · priority',
-            tps: 112.8,
-            ttftS: 0.27,
-            quantization: 'FP16 FULL',
-            quantizationStatus: 'verified'
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'z-ai',
-    name: 'Z.ai',
-    providerId: 'Z-THETA',
-    plans: [
-      {
-        id: 'developer-bundle',
-        name: 'Developer Bundle',
-        subtitle: 'Indie Compute Pack',
-        price: '$20.00',
-        period: '/ Month',
-        modelRows: [
-          {
-            rowId: 'dev-minimax',
-            modelName: 'MiniMax M2.5',
-            usageLabel: '500K tokens / mo',
-            tps: 72.0,
-            ttftS: 0.41,
-            quantization: 'FP16 FULL',
-            quantizationStatus: 'verified'
-          },
-          {
-            rowId: 'dev-glm-4',
-            modelName: 'GLM-4',
-            usageLabel: '500K tokens / mo',
-            tps: 78.5,
-            ttftS: null,
-            quantization: 'FP16 FULL',
-            quantizationStatus: 'verified'
-          }
-        ]
-      }
-    ]
-  }
-];
-
 @Component({
   selector: 'app-directory',
   standalone: true,
@@ -197,12 +76,34 @@ const DIRECTORY_SEED_PROVIDERS: DirectoryProvider[] = [
   templateUrl: './directory.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DirectoryComponent {
-  readonly searchQuery = signal('');
+export class DirectoryComponent implements OnInit {
+  private readonly supabase = inject(SupabaseService);
 
-  readonly providers = signal(DIRECTORY_SEED_PROVIDERS);
+  readonly searchQuery = signal('');
+  readonly providers = signal<DirectoryProvider[]>([]);
+  readonly loading = signal(true);
+  readonly loadError = signal<string | null>(null);
 
   readonly view = computed(() => buildDirectoryView(this.providers(), this.searchQuery()));
+
+  async ngOnInit(): Promise<void> {
+    this.loadError.set(null);
+    this.loading.set(true);
+    try {
+      const data = await this.supabase.fetchDirectoryFromSupabase();
+      this.providers.set(data);
+    } catch (e) {
+      console.error('Directory load failed', e);
+      const message =
+        e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
+          ? (e as { message: string }).message
+          : 'Could not load directory from Supabase.';
+      this.loadError.set(message);
+      this.providers.set([]);
+    } finally {
+      this.loading.set(false);
+    }
+  }
 
   barWidthPercent(tps: number, maxTps: number): number {
     return tpsBarPercent(tps, maxTps);
@@ -212,7 +113,6 @@ export class DirectoryComponent {
     return status === 'scam' ? 'Loss Detected' : 'Verified Zero Loss';
   }
 
-  /** TTFT from `benchmark_runs.ttft_s`; null / NaN shown as em dash. */
   formatTtft(seconds: number | null): string {
     if (seconds == null || Number.isNaN(seconds)) {
       return '—';

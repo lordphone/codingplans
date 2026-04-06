@@ -19,6 +19,15 @@
     <div class="font-mono text-[0.75rem] text-zinc-500 tracking-widest uppercase">SYST REPORT :: COMPREHENSIVE LLM PRICING MATRIX</div>
   </header>
 
+  @if (loadError()) {
+    <p class="mb-6 border border-red-200 bg-red-50 px-4 py-3 font-mono text-sm text-red-800" role="alert">
+      {{ loadError() }}
+    </p>
+  }
+  @if (loading()) {
+    <p class="mb-6 font-mono text-sm text-zinc-500">Loading directory…</p>
+  }
+
   <div class="mb-12">
     <div class="relative">
       <input
