@@ -32,6 +32,8 @@ export interface Model {
 export interface PlanModel {
   plan_id: string;
   model_id: string;
+  /** Free-form usage limit copy for this plan+model (optional in API embeds). */
+  usage_limit?: string | null;
 }
 
 /**

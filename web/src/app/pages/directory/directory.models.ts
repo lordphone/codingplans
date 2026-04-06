@@ -5,7 +5,7 @@ export type QuantizationStatus = 'scam' | 'verified' | 'untested';
 export interface DirectoryModelRow {
   rowId: string;
   modelName: string;
-  /** No dedicated DB column yet; placeholder until limits exist in schema. */
+  /** Placeholder; DB `plan_models.usage_limit` not shown in UI for now. */
   usageLabel: string;
   tps: number;
   ttftS: number | null;

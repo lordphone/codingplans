@@ -47,7 +47,7 @@ export class SupabaseService {
   /**
    * Directory listing: nested providers → plans → plan_models → models; **7-day averages** for TPS/TTFT;
    * **quantization** from the **latest** run (any time) with non-null `quantization` for that plan+model.
-   * Usage limits are not in schema yet (`usageLabel` is '—').
+   * **Usage limits** column shows '—' until we surface `plan_models.usage_limit` again.
    */
   async fetchDirectoryFromSupabase(): Promise<DirectoryProvider[]> {
     const { data: raw, error: providersError } = await this.supabase
@@ -59,7 +59,7 @@ export class SupabaseService {
       throw providersError;
     }
 
-    const providers = (raw ?? []) as ProviderWithPlansAndModels[];
+    const providers = (raw ?? []) as unknown as ProviderWithPlansAndModels[];
     const planIds = [
       ...new Set(providers.flatMap(p => (p.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id)))
     ];
