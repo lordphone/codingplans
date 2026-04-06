@@ -30,35 +30,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       </nav>
 
       <div class="flex flex-1 pt-16">
-        <!-- SideNavBar (Filters) -->
-        <aside class="fixed left-0 top-16 w-64 h-full flex flex-col p-8 gap-6 bg-zinc-50 border-r border-zinc-200">
-          <div class="flex flex-col gap-1">
-            <span class="font-mono text-[11px] uppercase tracking-wider text-emerald-700 font-bold">FILTERS</span>
-          </div>
-          <nav class="flex flex-col gap-4">
-            <a routerLink="/models"
-               routerLinkActive="text-emerald-700"
-               class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:bg-zinc-200 p-1 transition-colors">
-              MODELS
-            </a>
-            <a routerLink="/directory"
-               routerLinkActive="text-emerald-700"
-               class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:bg-zinc-200 p-1 transition-colors">
-              PROVIDERS
-            </a>
-            <a routerLink="/directory" [queryParams]="{filter: 'speed'}"
-               class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:bg-zinc-200 p-1 transition-colors">
-              SPEED
-            </a>
-            <a routerLink="/directory" [queryParams]="{filter: 'quantization'}"
-               class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:bg-zinc-200 p-1 transition-colors">
-              QUANTIZATION
-            </a>
-          </nav>
-        </aside>
-
-        <!-- Main Content -->
-        <main class="ml-64 flex-1 p-12 bg-surface">
+        <main class="flex-1 p-12 bg-surface">
           <router-outlet></router-outlet>
         </main>
       </div>
