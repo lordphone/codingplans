@@ -6,7 +6,7 @@
   <nav class="flex flex-col gap-4">
     <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">MODELS</span>
     <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">PROVIDERS</span>
-    <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">SPEED</span>
+    <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">PERFORMANCE</span>
     <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 p-1">QUANTIZATION</span>
   </nav>
 </aside>
@@ -29,7 +29,7 @@
         class="w-full bg-white border border-zinc-300 px-4 py-3 font-mono text-sm outline-none focus:border-emerald-600 transition-colors"
       />
       <span class="absolute right-4 top-1/2 -translate-y-1/2 font-mono text-[10px] text-zinc-400 uppercase">
-        {{ vm.planCount }} RESULTS
+        {{ vm.rowCount }} RESULTS
       </span>
     </div>
   </div>
@@ -44,41 +44,109 @@
           <span class="font-mono text-[10px] text-zinc-400">PROVIDER ID: {{ provider.providerId }}</span>
         </div>
 
-        <div class="grid grid-cols-12 gap-1 bg-surface-container-low p-1">
-          <div class="col-span-3 bg-surface-container-highest px-4 py-2 font-mono text-[9px] text-zinc-500">TIER</div>
-          <div class="col-span-3 bg-surface-container-highest px-4 py-2 font-mono text-[9px] text-zinc-500">MODEL ARCHITECTURE</div>
-          <div class="col-span-2 bg-surface-container-highest px-4 py-2 font-mono text-[9px] text-zinc-500">SPEED (TPS)</div>
-          <div class="col-span-2 bg-surface-container-highest px-4 py-2 font-mono text-[9px] text-zinc-500 text-right">QUANTIZATION</div>
-          <div class="col-span-2 bg-surface-container-highest px-4 py-2 font-mono text-[9px] text-zinc-500 text-right">COST UNIT</div>
-
-          @for (plan of provider.plans; track plan.id) {
-            <div class="col-span-3 bg-white px-4 py-6 flex flex-col justify-center" [class.border-t.border-zinc-50]="!$first">
-              <a [routerLink]="['/directory', provider.id, plan.id]" class="font-bold text-sm tracking-tight hover:text-emerald-700 transition-colors">
-                {{ plan.name }}
-              </a>
-              <span class="font-mono text-[10px] text-zinc-400 uppercase">{{ plan.subtitle }}</span>
-            </div>
-            <div class="col-span-3 bg-white px-4 py-6 flex flex-col justify-center" [class.border-t.border-zinc-50]="!$first">
-              <span class="font-mono text-xs">{{ plan.models }}</span>
-            </div>
-            <div class="col-span-2 bg-white px-4 py-6 flex items-center" [class.border-t.border-zinc-50]="!$first">
-              <div class="w-full bg-zinc-100 h-2">
-                <div class="bg-black h-full" [style.width.%]="barWidthPercent(plan.tps, vm.maxTps)"></div>
-              </div>
-              <span class="font-mono text-[10px] ml-2">{{ plan.tps }}</span>
-            </div>
-            <div class="col-span-2 bg-white px-4 py-6 flex flex-col justify-center items-end" [class.border-t.border-zinc-50]="!$first">
-              <div class="flex items-center gap-2">
-                <span class="font-mono text-[10px]">{{ plan.quantization }}</span>
-                <div class="w-2.5 h-2.5" [class.bg-tertiary]="plan.quantizationStatus === 'scam'" [class.bg-secondary]="plan.quantizationStatus === 'verified'"></div>
-              </div>
-              <span class="font-mono text-[8px] text-zinc-400 mt-1 uppercase">{{ quantizationLabel(plan.quantizationStatus) }}</span>
-            </div>
-            <div class="col-span-2 bg-white px-4 py-6 flex flex-col justify-center items-end" [class.border-t.border-zinc-50]="!$first">
-              <span class="font-mono text-sm font-bold">{{ plan.price }}</span>
-              <span class="font-mono text-[8px] text-zinc-400 uppercase">{{ plan.period }}</span>
-            </div>
-          }
+        <div class="bg-surface-container-low p-1">
+          <table class="w-full table-fixed border-separate border-spacing-px">
+            <colgroup>
+              <col class="w-[17%]" />
+              <col class="w-[15%]" />
+              <col class="w-[14%]" />
+              <col class="w-[22%]" />
+              <col class="w-[18%]" />
+              <col class="w-[14%]" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">TIER</th>
+                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">MODEL</th>
+                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">QUANTIZATION</th>
+                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">PERFORMANCE</th>
+                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">USAGE LIMITS</th>
+                <th class="bg-surface-container-highest px-3 py-2 text-right font-mono text-[9px] text-zinc-500 font-normal">COST UNIT</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (plan of provider.plans; track plan.id) {
+                @for (modelRow of plan.modelRows; track modelRow.rowId; let rowIdx = $index) {
+                  <tr class="bg-white">
+                    @if (rowIdx === 0) {
+                      <td
+                        [attr.rowspan]="plan.modelRows.length"
+                        class="align-middle border-t border-zinc-100 px-3 py-4 bg-white"
+                      >
+                        <a [routerLink]="['/directory', provider.id, plan.id]" class="font-bold text-sm tracking-tight hover:text-emerald-700 transition-colors">
+                          {{ plan.name }}
+                        </a>
+                        <span class="block font-mono text-[10px] text-zinc-400 uppercase">{{ plan.subtitle }}</span>
+                      </td>
+                    }
+                    <td
+                      class="border-t px-3 py-4 font-mono text-xs align-middle"
+                      [class.border-zinc-100]="rowIdx === 0"
+                      [class.border-zinc-50]="rowIdx > 0"
+                    >
+                      {{ modelRow.modelName }}
+                    </td>
+                    <td
+                      class="border-t px-3 py-4 align-middle"
+                      [class.border-zinc-100]="rowIdx === 0"
+                      [class.border-zinc-50]="rowIdx > 0"
+                    >
+                      <div class="flex flex-col items-start justify-center">
+                        <div class="flex items-center gap-2">
+                          <span class="font-mono text-[10px]">{{ modelRow.quantization }}</span>
+                          <div
+                            class="w-2.5 h-2.5 shrink-0"
+                            [class.bg-tertiary]="modelRow.quantizationStatus === 'scam'"
+                            [class.bg-secondary]="modelRow.quantizationStatus === 'verified'"
+                          ></div>
+                        </div>
+                        <span class="font-mono text-[8px] text-zinc-400 mt-1 uppercase">{{
+                          quantizationLabel(modelRow.quantizationStatus)
+                        }}</span>
+                      </div>
+                    </td>
+                    <td
+                      class="border-t px-3 py-4 align-middle"
+                      [class.border-zinc-100]="rowIdx === 0"
+                      [class.border-zinc-50]="rowIdx > 0"
+                    >
+                      <div class="flex flex-col gap-2">
+                        <div class="flex items-center gap-1.5 min-w-0">
+                          <span class="font-mono text-[8px] text-zinc-400 uppercase shrink-0 w-7">TPS</span>
+                          <div class="flex flex-1 items-center min-w-0">
+                            <div class="w-full min-w-0 bg-zinc-100 h-2">
+                              <div class="bg-black h-full" [style.width.%]="barWidthPercent(modelRow.tps, vm.maxTps)"></div>
+                            </div>
+                            <span class="font-mono text-[10px] ml-2 shrink-0 tabular-nums">{{ modelRow.tps }}</span>
+                          </div>
+                        </div>
+                        <div class="flex items-baseline gap-1.5 font-mono text-[10px] tabular-nums">
+                          <span class="text-[8px] text-zinc-400 uppercase shrink-0 w-7">TTFT</span>
+                          <span>{{ formatTtft(modelRow.ttftS) }}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td
+                      class="border-t px-3 py-4 align-middle"
+                      [class.border-zinc-100]="rowIdx === 0"
+                      [class.border-zinc-50]="rowIdx > 0"
+                    >
+                      <span class="font-mono text-[10px] text-zinc-700 leading-snug">{{ modelRow.usageLabel }}</span>
+                    </td>
+                    @if (rowIdx === 0) {
+                      <td
+                        [attr.rowspan]="plan.modelRows.length"
+                        class="align-middle border-t border-zinc-100 px-3 py-4 bg-white text-right"
+                      >
+                        <span class="font-mono text-sm font-bold">{{ plan.price }}</span>
+                        <span class="block font-mono text-[8px] text-zinc-400 uppercase">{{ plan.period }}</span>
+                      </td>
+                    }
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
         </div>
       </section>
     }
