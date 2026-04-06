@@ -1,4 +1,5 @@
-export type QuantizationStatus = 'scam' | 'verified';
+/** `untested`: no `benchmark_runs.quantization` on file for this plan+model yet. */
+export type QuantizationStatus = 'scam' | 'verified' | 'untested';
 
 /** One grid row: one model on a plan. */
 export interface DirectoryModelRow {
@@ -22,8 +23,8 @@ export interface DirectoryPlan {
 }
 
 export interface DirectoryProvider {
+  /** Route segment; same as DB `providers.slug`. */
   id: string;
   name: string;
-  providerId: string;
   plans: DirectoryPlan[];
 }

@@ -50,105 +50,122 @@
           <a [routerLink]="['/directory', provider.id]" class="text-xl font-bold tracking-tight uppercase hover:text-emerald-700 transition-colors">
             {{ provider.name }}
           </a>
-          <span class="font-mono text-[10px] text-zinc-400">PROVIDER ID: {{ provider.providerId }}</span>
+          <span class="font-mono text-[10px] text-zinc-400">SLUG: {{ provider.id }}</span>
         </div>
 
-        <div class="bg-surface-container-low p-1">
-          <table class="w-full table-fixed border-separate border-spacing-px">
+        <div class="overflow-hidden rounded-sm border border-zinc-200 bg-white shadow-sm">
+          <table class="w-full table-fixed border-collapse text-left">
             <colgroup>
+              <col class="w-[16%]" />
+              <col class="w-[14%]" />
+              <col class="w-[15%]" />
+              <col class="w-[23%]" />
               <col class="w-[17%]" />
               <col class="w-[15%]" />
-              <col class="w-[14%]" />
-              <col class="w-[22%]" />
-              <col class="w-[18%]" />
-              <col class="w-[14%]" />
             </colgroup>
             <thead>
-              <tr>
-                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">TIER</th>
-                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">MODEL</th>
-                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">QUANTIZATION</th>
-                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">PERFORMANCE</th>
-                <th class="bg-surface-container-highest px-3 py-2 text-left font-mono text-[9px] text-zinc-500 font-normal">USAGE LIMITS</th>
-                <th class="bg-surface-container-highest px-3 py-2 text-right font-mono text-[9px] text-zinc-500 font-normal">COST UNIT</th>
+              <tr class="border-b border-zinc-200">
+                <th
+                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
+                >
+                  Tier
+                </th>
+                <th
+                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
+                >
+                  Model
+                </th>
+                <th
+                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
+                >
+                  Quantization
+                </th>
+                <th
+                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
+                >
+                  Performance
+                </th>
+                <th
+                  class="border-r border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600"
+                >
+                  Usage limits
+                </th>
+                <th class="bg-zinc-50 px-4 py-3 text-right font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-600">
+                  Cost
+                </th>
               </tr>
             </thead>
             <tbody>
               @for (plan of provider.plans; track plan.id) {
                 @for (modelRow of plan.modelRows; track modelRow.rowId; let rowIdx = $index) {
-                  <tr class="bg-white">
+                  <tr class="border-b border-zinc-100 bg-white hover:bg-zinc-50/60">
                     @if (rowIdx === 0) {
                       <td
                         [attr.rowspan]="plan.modelRows.length"
-                        class="align-middle border-t border-zinc-100 px-3 py-4 bg-white"
+                        class="align-middle border-r border-zinc-200 bg-zinc-50/80 px-4 py-4"
                       >
-                        <a [routerLink]="['/directory', provider.id, plan.id]" class="font-bold text-sm tracking-tight hover:text-emerald-700 transition-colors">
+                        <a [routerLink]="['/directory', provider.id, plan.id]" class="font-bold text-sm leading-snug tracking-tight text-zinc-900 hover:text-emerald-700 transition-colors">
                           {{ plan.name }}
                         </a>
-                        <span class="block font-mono text-[10px] text-zinc-400 uppercase">{{ plan.subtitle }}</span>
+                        @if (plan.subtitle) {
+                          <span class="mt-1.5 block font-mono text-[10px] leading-relaxed text-zinc-500">{{ plan.subtitle }}</span>
+                        }
                       </td>
                     }
-                    <td
-                      class="border-t px-3 py-4 font-mono text-xs align-middle"
-                      [class.border-zinc-100]="rowIdx === 0"
-                      [class.border-zinc-50]="rowIdx > 0"
-                    >
+                    <td class="border-r border-zinc-200 px-4 py-3.5 font-mono text-xs leading-snug text-zinc-800 align-middle">
                       {{ modelRow.modelName }}
                     </td>
-                    <td
-                      class="border-t px-3 py-4 align-middle"
-                      [class.border-zinc-100]="rowIdx === 0"
-                      [class.border-zinc-50]="rowIdx > 0"
-                    >
-                      <div class="flex flex-col items-start justify-center">
-                        <div class="flex items-center gap-2">
-                          <span class="font-mono text-[10px]">{{ modelRow.quantization }}</span>
+                    <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">
+                      <div class="flex min-h-[2.75rem] flex-col justify-center gap-1">
+                        <div class="flex items-start gap-2">
+                          <span
+                            class="min-w-0 flex-1 font-mono text-[11px] leading-snug uppercase"
+                            [class.text-amber-800]="modelRow.quantizationStatus === 'untested'"
+                            [class.text-tertiary]="modelRow.quantizationStatus === 'scam'"
+                            [class.text-secondary]="modelRow.quantizationStatus === 'verified'"
+                            >{{ modelRow.quantization }}</span>
                           <div
-                            class="w-2.5 h-2.5 shrink-0"
-                            [class.bg-tertiary]="modelRow.quantizationStatus === 'scam'"
-                            [class.bg-secondary]="modelRow.quantizationStatus === 'verified'"
+                            class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px]"
+                            [ngClass]="{
+                              'bg-amber-400 border border-amber-600': modelRow.quantizationStatus === 'untested',
+                              'bg-tertiary': modelRow.quantizationStatus === 'scam',
+                              'bg-secondary': modelRow.quantizationStatus === 'verified'
+                            }"
                           ></div>
                         </div>
-                        <span class="font-mono text-[8px] text-zinc-400 mt-1 uppercase">{{
-                          quantizationLabel(modelRow.quantizationStatus)
-                        }}</span>
+                        @if (modelRow.quantizationStatus === 'scam') {
+                          <span class="font-mono text-[9px] uppercase leading-tight tracking-wide text-tertiary"
+                            >Loss Detected</span>
+                        }
                       </div>
                     </td>
-                    <td
-                      class="border-t px-3 py-4 align-middle"
-                      [class.border-zinc-100]="rowIdx === 0"
-                      [class.border-zinc-50]="rowIdx > 0"
-                    >
-                      <div class="flex flex-col gap-2">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                          <span class="font-mono text-[8px] text-zinc-400 uppercase shrink-0 w-7">TPS</span>
-                          <div class="flex flex-1 items-center min-w-0">
-                            <div class="w-full min-w-0 bg-zinc-100 h-2">
-                              <div class="bg-black h-full" [style.width.%]="barWidthPercent(modelRow.tps, vm.maxTps)"></div>
+                    <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">
+                      <div class="flex min-w-0 flex-col gap-2.5">
+                        <div class="flex items-center gap-2 min-w-0">
+                          <span class="w-9 shrink-0 text-right font-mono text-[10px] font-medium uppercase text-zinc-600">TPS</span>
+                          <div class="flex min-w-0 flex-1 items-center gap-2">
+                            <div class="h-2 min-w-0 flex-1 rounded-[1px] bg-zinc-200">
+                              <div class="h-full rounded-[1px] bg-zinc-900" [style.width.%]="barWidthPercent(modelRow.tps, vm.maxTps)"></div>
                             </div>
-                            <span class="font-mono text-[10px] ml-2 shrink-0 tabular-nums">{{ modelRow.tps }}</span>
+                            <span class="w-8 shrink-0 text-right font-mono text-[11px] tabular-nums text-zinc-900">{{ modelRow.tps }}</span>
                           </div>
                         </div>
-                        <div class="flex items-baseline gap-1.5 font-mono text-[10px] tabular-nums">
-                          <span class="text-[8px] text-zinc-400 uppercase shrink-0 w-7">TTFT</span>
-                          <span>{{ formatTtft(modelRow.ttftS) }}</span>
+                        <div class="flex items-center gap-2 font-mono tabular-nums">
+                          <span class="w-9 shrink-0 text-right text-[10px] font-medium uppercase text-zinc-600">TTFT</span>
+                          <span class="text-[11px] text-zinc-800">{{ formatTtft(modelRow.ttftS) }}</span>
                         </div>
                       </div>
                     </td>
-                    <td
-                      class="border-t px-3 py-4 align-middle"
-                      [class.border-zinc-100]="rowIdx === 0"
-                      [class.border-zinc-50]="rowIdx > 0"
-                    >
-                      <span class="font-mono text-[10px] text-zinc-700 leading-snug">{{ modelRow.usageLabel }}</span>
+                    <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">
+                      <span class="font-mono text-[11px] leading-snug text-zinc-600">{{ modelRow.usageLabel }}</span>
                     </td>
                     @if (rowIdx === 0) {
                       <td
                         [attr.rowspan]="plan.modelRows.length"
-                        class="align-middle border-t border-zinc-100 px-3 py-4 bg-white text-right"
+                        class="align-middle bg-zinc-50/40 px-4 py-4 text-right"
                       >
-                        <span class="font-mono text-sm font-bold">{{ plan.price }}</span>
-                        <span class="block font-mono text-[8px] text-zinc-400 uppercase">{{ plan.period }}</span>
+                        <span class="font-mono text-base font-bold tabular-nums text-zinc-900">{{ plan.price }}</span>
+                        <span class="mt-1 block font-mono text-[10px] uppercase tracking-wide text-zinc-500">{{ plan.period }}</span>
                       </td>
                     }
                   </tr>
@@ -159,16 +176,5 @@
         </div>
       </section>
     }
-
-    <div class="flex justify-start gap-12 mt-8 pt-8 border-t border-zinc-100">
-      <div class="flex items-center gap-3">
-        <div class="w-4 h-4 bg-secondary"></div>
-        <span class="font-mono text-[9px] uppercase tracking-widest text-zinc-500">FP16 FULL FIDELITY</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <div class="w-4 h-4 bg-tertiary"></div>
-        <span class="font-mono text-[9px] uppercase tracking-widest text-zinc-500">INT4 PRECISION DETECTED</span>
-      </div>
-    </div>
   </div>
 </div>

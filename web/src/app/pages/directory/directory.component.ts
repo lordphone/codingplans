@@ -10,7 +10,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { SupabaseService } from '../../services/supabase.service';
-import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider, QuantizationStatus } from './directory.models';
+import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
 
 interface DirectoryViewModel {
   providers: DirectoryProvider[];
@@ -107,10 +107,6 @@ export class DirectoryComponent implements OnInit {
 
   barWidthPercent(tps: number, maxTps: number): number {
     return tpsBarPercent(tps, maxTps);
-  }
-
-  quantizationLabel(status: QuantizationStatus): string {
-    return status === 'scam' ? 'Loss Detected' : 'Verified Zero Loss';
   }
 
   formatTtft(seconds: number | null): string {

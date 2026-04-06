@@ -45,9 +45,9 @@ export class SupabaseService {
   }
 
   /**
-   * Directory listing: nested providers → plans → plan_models → models, plus **rolling 7-day averages**
-   * of TPS and TTFT per (plan_id, model_id) from `benchmark_runs`. Quantization label is taken from the
-   * **most recent** run in that window (non-null only). Usage limits are not in schema yet (`usageLabel` is '—').
+   * Directory listing: nested providers → plans → plan_models → models; **7-day averages** for TPS/TTFT;
+   * **quantization** from the **latest** run (any time) with non-null `quantization` for that plan+model.
+   * Usage limits are not in schema yet (`usageLabel` is '—').
    */
   async fetchDirectoryFromSupabase(): Promise<DirectoryProvider[]> {
     const { data: raw, error: providersError } = await this.supabase
@@ -65,23 +65,37 @@ export class SupabaseService {
     ];
 
     const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
+    const latestQuantByPlanModel = new Map<string, string>();
+
     if (planIds.length > 0) {
       const sinceIso = rollingWindowStartUtcIso(BENCHMARK_ROLLING_DAYS);
-      const { data: runsRaw, error: benchError } = await this.supabase
-        .from('benchmark_runs')
-        .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
-        .in('plan_id', planIds)
-        .gte('run_at', sinceIso);
 
-      if (benchError) {
-        throw benchError;
+      const [perfRes, quantRes] = await Promise.all([
+        this.supabase
+          .from('benchmark_runs')
+          .select('plan_id, model_id, tps, ttft_s, run_at')
+          .in('plan_id', planIds)
+          .gte('run_at', sinceIso),
+        this.supabase
+          .from('benchmark_runs')
+          .select('plan_id, model_id, quantization, run_at')
+          .in('plan_id', planIds)
+          .not('quantization', 'is', null)
+          .order('run_at', { ascending: false })
+      ]);
+
+      if (perfRes.error) {
+        throw perfRes.error;
+      }
+      if (quantRes.error) {
+        throw quantRes.error;
       }
 
-      const runs = (runsRaw ?? []) as BenchmarkRun[];
-      buildSevenDayStatsIntoMap(runs, statsByPlanModel);
+      buildSevenDayStatsIntoMap((perfRes.data ?? []) as BenchmarkRun[], statsByPlanModel);
+      buildLatestQuantizationMap(quantRes.data ?? [], latestQuantByPlanModel);
     }
 
-    return mapProvidersToDirectory(providers, statsByPlanModel);
+    return mapProvidersToDirectory(providers, statsByPlanModel, latestQuantByPlanModel);
   }
 
   async getData(table: string) {
@@ -100,12 +114,10 @@ export class SupabaseService {
 /** How far back to include runs when computing directory performance averages (Option A: aggregate in app). */
 const BENCHMARK_ROLLING_DAYS = 7;
 
-/** Averages + latest-quantization metadata for one (plan_id, model_id) in the window. */
+/** Rolling-window averages for one (plan_id, model_id); quantization is loaded separately. */
 interface PlanModelBenchmarkStats {
   avgTps: number | null;
   avgTtftS: number | null;
-  /** From the newest run in the window that had non-null `quantization`. */
-  quantization: string | null;
 }
 
 function rollingWindowStartUtcIso(days: number): string {
@@ -115,18 +127,14 @@ function rollingWindowStartUtcIso(days: number): string {
 }
 
 function buildSevenDayStatsIntoMap(rows: BenchmarkRun[], target: Map<string, PlanModelBenchmarkStats>): void {
-  type Acc = {
-    tpsValues: number[];
-    ttftValues: number[];
-    latestQ: { text: string; at: string } | null;
-  };
+  type Acc = { tpsValues: number[]; ttftValues: number[] };
 
   const accByKey = new Map<string, Acc>();
   for (const r of rows) {
     const key = `${r.plan_id}:${r.model_id}`;
     let acc = accByKey.get(key);
     if (!acc) {
-      acc = { tpsValues: [], ttftValues: [], latestQ: null };
+      acc = { tpsValues: [], ttftValues: [] };
       accByKey.set(key, acc);
     }
 
@@ -135,13 +143,6 @@ function buildSevenDayStatsIntoMap(rows: BenchmarkRun[], target: Map<string, Pla
     }
     if (r.ttft_s != null && !Number.isNaN(Number(r.ttft_s))) {
       acc.ttftValues.push(Number(r.ttft_s));
-    }
-
-    const q = r.quantization?.trim();
-    if (q) {
-      if (!acc.latestQ || r.run_at > acc.latestQ.at) {
-        acc.latestQ = { text: q, at: r.run_at };
-      }
     }
   }
 
@@ -153,37 +154,51 @@ function buildSevenDayStatsIntoMap(rows: BenchmarkRun[], target: Map<string, Pla
         ? acc.ttftValues.reduce((s, x) => s + x, 0) / acc.ttftValues.length
         : null;
 
-    target.set(key, {
-      avgTps,
-      avgTtftS,
-      quantization: acc.latestQ?.text ?? null
-    });
+    target.set(key, { avgTps, avgTtftS });
+  }
+}
+
+/** Latest non-empty `quantization` per (plan_id, model_id); `rows` should be ordered by `run_at` descending. */
+function buildLatestQuantizationMap(
+  rows: Array<Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'quantization' | 'run_at'>>,
+  target: Map<string, string>
+): void {
+  for (const r of rows) {
+    const q = typeof r.quantization === 'string' ? r.quantization.trim() : '';
+    if (!q) {
+      continue;
+    }
+    const key = `${r.plan_id}:${r.model_id}`;
+    if (!target.has(key)) {
+      target.set(key, q);
+    }
   }
 }
 
 function mapProvidersToDirectory(
   providers: ProviderWithPlansAndModels[],
-  statsByPlanModel: Map<string, PlanModelBenchmarkStats>
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
+  latestQuantByPlanModel: Map<string, string>
 ): DirectoryProvider[] {
   return providers
-    .map(p => mapOneProvider(p, statsByPlanModel))
+    .map(p => mapOneProvider(p, statsByPlanModel, latestQuantByPlanModel))
     .filter(dp => dp.plans.length > 0);
 }
 
 function mapOneProvider(
   provider: ProviderWithPlansAndModels,
-  statsByPlanModel: Map<string, PlanModelBenchmarkStats>
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
+  latestQuantByPlanModel: Map<string, string>
 ): DirectoryProvider {
   const plans = (provider.plans ?? [])
     .filter(pl => pl.is_active)
     .sort((a, b) => comparePlansByPriceThenName(a, b))
-    .map(pl => mapOnePlan(pl, statsByPlanModel))
+    .map(pl => mapOnePlan(pl, statsByPlanModel, latestQuantByPlanModel))
     .filter((pl): pl is DirectoryPlan => pl !== null);
 
   return {
     id: provider.slug,
     name: provider.name,
-    providerId: abbreviateUuid(provider.id),
     plans
   };
 }
@@ -205,7 +220,8 @@ function comparePlansByPriceThenName(
 
 function mapOnePlan(
   plan: ProviderWithPlansAndModels['plans'][number],
-  statsByPlanModel: Map<string, PlanModelBenchmarkStats>
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
+  latestQuantByPlanModel: Map<string, string>
 ): DirectoryPlan | null {
   const junctions = [...(plan.plan_models ?? [])].sort((a, b) => {
     const na = a.models?.name ?? '';
@@ -219,18 +235,31 @@ function mapOnePlan(
     if (!model?.slug) {
       continue;
     }
-    const stats = statsByPlanModel.get(`${plan.id}:${pm.model_id}`);
-    const quantText = stats?.quantization?.trim() || '—';
+    const key = `${plan.id}:${pm.model_id}`;
+    const stats = statsByPlanModel.get(key);
+    const latestQ = latestQuantByPlanModel.get(key)?.trim();
 
-    modelRows.push({
+    const modelRowBase = {
       rowId: `${plan.slug}:${model.slug}`,
       modelName: model.name,
       usageLabel: USAGE_PLACEHOLDER,
       tps: stats?.avgTps != null ? Math.round(stats.avgTps) : 0,
-      ttftS: stats?.avgTtftS ?? null,
-      quantization: quantText,
-      quantizationStatus: inferQuantizationStatus(quantText)
-    });
+      ttftS: stats?.avgTtftS ?? null
+    };
+
+    if (!latestQ) {
+      modelRows.push({
+        ...modelRowBase,
+        quantization: 'untested',
+        quantizationStatus: 'untested' as const
+      });
+    } else {
+      modelRows.push({
+        ...modelRowBase,
+        quantization: latestQ,
+        quantizationStatus: inferQuantizationStatus(latestQ)
+      });
+    }
   }
 
   if (modelRows.length === 0) {
@@ -240,7 +269,7 @@ function mapOnePlan(
   return {
     id: plan.slug,
     name: plan.name,
-    subtitle: plan.description?.trim() || '—',
+    subtitle: plan.description?.trim() ?? '',
     price: formatMonthlyPrice(plan.price_per_month, plan.currency),
     period: '/ Month',
     modelRows
@@ -250,7 +279,11 @@ function mapOnePlan(
 const USAGE_PLACEHOLDER = '—';
 
 function inferQuantizationStatus(quantization: string): 'scam' | 'verified' {
-  return quantization.toLowerCase().includes('scam') ? 'scam' : 'verified';
+  const q = quantization.toLowerCase();
+  if (q.includes('scam') || /\breset\b/.test(q)) {
+    return 'scam';
+  }
+  return 'verified';
 }
 
 function formatMonthlyPrice(amount: number | null, currency: string): string {
@@ -267,6 +300,3 @@ function formatMonthlyPrice(amount: number | null, currency: string): string {
   }
 }
 
-function abbreviateUuid(uuid: string): string {
-  return uuid.replace(/-/g, '').slice(0, 8).toUpperCase();
-}
