@@ -1,9 +1,12 @@
 <div class="relative">
   @let vm = view();
 
-  <header class="mb-8">
-    <h1 class="text-[3.5rem] font-extrabold tracking-tighter leading-none uppercase">Provider & Plan Directory</h1>
-  </header>
+  <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <header class="min-w-0">
+      <h1 class="text-[3.5rem] font-extrabold tracking-tighter leading-none uppercase">Provider & Plan Directory</h1>
+    </header>
+    <app-catalog-refresh-strip class="shrink-0 sm:pt-2" />
+  </div>
 
   @if (loadError()) {
     <p class="mb-6 border border-red-200 bg-red-50 px-4 py-3 font-mono text-sm text-red-800" role="alert">

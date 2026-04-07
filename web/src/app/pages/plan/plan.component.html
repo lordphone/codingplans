@@ -1,3 +1,7 @@
+<div class="relative">
+  <div class="mb-6 flex justify-end">
+    <app-catalog-refresh-strip />
+  </div>
 @if (missingParams()) {
   <p class="mb-8 font-mono text-sm text-zinc-600">Missing provider or plan in the URL.</p>
 } @else if (loadError()) {
@@ -272,3 +276,4 @@
   </div>
   }
 }
+</div>

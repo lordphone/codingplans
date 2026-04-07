@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
+import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
 import { SupabaseService } from '../../services/supabase.service';
 import type { PlanPerformanceDayPoint, PlanPerformancePage } from './plan.models';
@@ -152,7 +153,7 @@ function buildMetricSparkline(
 @Component({
   selector: 'app-plan',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, CatalogRefreshStripComponent],
   templateUrl: './plan.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

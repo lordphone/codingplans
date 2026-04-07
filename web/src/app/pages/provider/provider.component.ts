@@ -3,13 +3,14 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { from, map, switchMap } from 'rxjs';
+import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
 import type { ProviderPageData } from './provider.models';
 
 @Component({
   selector: 'app-provider',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, CatalogRefreshStripComponent],
   templateUrl: './provider.component.html'
 })
 export class ProviderComponent implements OnInit {

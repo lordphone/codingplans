@@ -1,9 +1,11 @@
-<!-- Breadcrumb -->
-<nav class="mb-8">
-  <a routerLink="/directory" class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:text-emerald-700 transition-colors">
-    ← BACK TO DIRECTORY
-  </a>
-</nav>
+<div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  <nav>
+    <a routerLink="/directory" class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:text-emerald-700 transition-colors">
+      ← BACK TO DIRECTORY
+    </a>
+  </nav>
+  <app-catalog-refresh-strip class="shrink-0" />
+</div>
 
 @if (loading()) {
   <p class="font-mono text-sm text-zinc-500">Loading…</p>

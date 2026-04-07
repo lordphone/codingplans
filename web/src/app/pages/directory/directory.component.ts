@@ -8,6 +8,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
 
@@ -73,7 +74,7 @@ function computeTpsBarPercent(tps: number, maxTps: number): number {
 @Component({
   selector: 'app-directory',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
+  imports: [CommonModule, RouterLink, FormsModule, CatalogRefreshStripComponent],
   templateUrl: './directory.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
