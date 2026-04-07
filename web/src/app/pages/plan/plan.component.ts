@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
 import { SupabaseService } from '../../services/supabase.service';
-import type { PlanPerformanceModelBlock, PlanPerformancePage } from './plan.models';
+import type { PlanPerformancePage } from './plan.models';
 import { buildMetricSparkline, type MetricSparklineGeom } from './plan-sparkline';
 
 const WINDOW_DAYS = 30;
@@ -96,23 +96,11 @@ export class PlanComponent {
     return this.sparklinesByModel().get(modelId);
   }
 
-  axisLabels(series: PlanPerformanceModelBlock['tpsSeries']): { start: string; mid: string; end: string } {
-    const n = series.length;
-    if (n === 0) {
-      return { start: '', mid: '', end: '' };
-    }
-    return {
-      start: series[0].label,
-      mid: series[Math.floor(n / 2)].label,
-      end: series[n - 1].label
-    };
-  }
-
-  formatTpsAxis(v: number | null): string {
-    if (v == null || Number.isNaN(v)) {
+  formatAvgTokPerS(avg: number | null): string {
+    if (avg == null || Number.isNaN(avg)) {
       return '—';
     }
-    return `${Math.round(v)}`;
+    return `${Math.round(avg)} tok/s`;
   }
 
   formatTtft(seconds: number | null): string {
