@@ -38,14 +38,35 @@
 
     @if (vm.models.length === 0) {
       <p class="text-sm text-zinc-600">This plan has no linked models in the directory yet.</p>
+    } @else {
+      <div class="mb-8 border-b border-zinc-200">
+        <div class="no-scrollbar -mx-1 flex gap-8 overflow-x-auto px-1" role="tablist" aria-label="Models on this plan">
+          @for (m of vm.models; track m.modelId; let idx = $index) {
+            <button
+              type="button"
+              role="tab"
+              [attr.aria-selected]="selectedModelIndex() === idx"
+              (click)="selectModelTab(idx)"
+              class="-mb-px border-b-2 border-transparent pb-3 pt-1 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
+              [class.border-zinc-900]="selectedModelIndex() === idx"
+              [class.font-semibold]="selectedModelIndex() === idx"
+              [class.text-zinc-900]="selectedModelIndex() === idx"
+              [class.font-normal]="selectedModelIndex() !== idx"
+              [class.text-zinc-500]="selectedModelIndex() !== idx"
+              [class.hover:text-zinc-700]="selectedModelIndex() !== idx"
+            >
+              {{ m.modelName }}
+            </button>
+          }
+        </div>
+      </div>
     }
 
-    <div class="space-y-14">
-      @for (model of vm.models; track model.modelId) {
-        @let sp = sparkFor(model.modelId);
-        @let gradTps = 'tps-area-' + model.modelId;
-        @let gradTtft = 'ttft-area-' + model.modelId;
-        <article class="space-y-4">
+    @if (selectedModel(); as model) {
+      @let sp = sparkFor(model.modelId);
+      @let gradTps = 'tps-area-' + model.modelId;
+      @let gradTtft = 'ttft-area-' + model.modelId;
+      <article class="space-y-4" role="tabpanel" [attr.aria-label]="'Metrics for ' + model.modelName">
           <div>
             <h2 class="text-xl font-semibold tracking-tight text-zinc-900">
               Performance for {{ model.modelName }}
@@ -254,9 +275,8 @@
               </div>
             }
           </div>
-        </article>
-      }
-    </div>
+      </article>
+    }
   </div>
   }
 }

@@ -168,6 +168,18 @@ export class PlanComponent {
   readonly notFound = signal(false);
   readonly page = signal<PlanPerformancePage | null>(null);
 
+  /** Active model tab index (resets when a new plan loads). */
+  readonly selectedModelIndex = signal(0);
+
+  readonly selectedModel = computed(() => {
+    const p = this.page();
+    if (!p || p.models.length === 0) {
+      return null;
+    }
+    const i = Math.min(Math.max(0, this.selectedModelIndex()), p.models.length - 1);
+    return p.models[i];
+  });
+
   readonly sparklinesByModel = computed(() => {
     const p = this.page();
     const mapById = new Map<string, { tps: MetricSparklineGeom; ttft: MetricSparklineGeom }>();
@@ -227,8 +239,13 @@ export class PlanComponent {
         } else {
           this.notFound.set(false);
           this.page.set(data);
+          this.selectedModelIndex.set(0);
         }
       });
+  }
+
+  selectModelTab(index: number): void {
+    this.selectedModelIndex.set(index);
   }
 
   sparkFor(modelId: string): { tps: MetricSparklineGeom; ttft: MetricSparklineGeom } | undefined {
