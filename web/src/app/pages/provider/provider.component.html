@@ -24,34 +24,38 @@
         [class.border-l]="i > 0"
         [class.bg-surface]="i % 2 === 0"
         [class.bg-white]="i % 2 === 1">
-        <!-- Plan Header -->
-        <div class="flex justify-between items-start gap-6 mb-8">
-          <div class="min-w-0">
+        <!-- Plan header: title + price (may wrap); min-height keeps tier rows aligned across columns -->
+        <div class="mb-8">
+          <div
+            class="mb-2 flex min-h-[6rem] flex-wrap content-start items-baseline gap-x-2 gap-y-1">
             <a [routerLink]="['/directory', providerId, plan.id]"
-               class="text-2xl font-bold tracking-tight mb-1 block hover:text-emerald-700 transition-colors">
+               class="text-2xl font-bold leading-tight tracking-tight hover:text-emerald-700 transition-colors">
               {{ plan.name }}
             </a>
-            <p class="font-mono text-[0.75rem] text-zinc-500 uppercase">TIER ID: {{ plan.tierId }}</p>
+            <span class="text-2xl font-light leading-tight tabular-nums text-zinc-800">
+              ({{ plan.price }} USD {{ plan.period }})
+            </span>
           </div>
-          <div class="shrink-0 text-right">
-            <span class="text-3xl font-light">{{ plan.price }}</span>
-            <span class="font-mono text-[0.65rem] block text-zinc-500 uppercase">USD {{ plan.period }}</span>
-          </div>
+          <p class="font-mono text-[0.75rem] text-zinc-500">
+            Tier ID: <span class="uppercase">{{ plan.tierId }}</span>
+          </p>
         </div>
 
-        <!-- Models: stacked blocks; each has a mini horizontal metric row (QUANT / TPS / TTFT) -->
+        <!-- Models: stacked blocks; centered rule between each pair -->
         <div class="min-w-0">
-          @for (row of plan.models; track row.id; let first = $first) {
-            <div
-              class="border-zinc-200"
-              [class.border-t]="!first"
-              [class.pt-10]="!first">
-              <p class="mb-4 font-mono text-[0.75rem] font-bold uppercase tracking-wide text-zinc-900">
-                {{ row.name | uppercase }}
+          @for (row of plan.models; track row.id; let i = $index) {
+            @if (i > 0) {
+              <div class="py-5" aria-hidden="true">
+                <div class="h-px w-full bg-zinc-200"></div>
+              </div>
+            }
+            <div>
+              <p class="mb-3 font-mono text-[0.75rem] font-bold uppercase tracking-wide text-zinc-900">
+                {{ row.name | uppercase }}:
               </p>
               <div class="grid grid-cols-3 gap-x-4 gap-y-1">
                 <div class="min-w-0 text-left">
-                  <div class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                  <div class="mb-1 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
                     QUANT
                   </div>
                   <div class="flex items-center gap-2">
@@ -62,18 +66,18 @@
                   </div>
                 </div>
                 <div class="min-w-0 text-left">
-                  <div class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                  <div class="mb-1 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
                     TPS
                   </div>
-                  <div class="font-mono text-[0.7rem] font-bold uppercase text-zinc-900">
+                  <div class="font-mono text-[0.7rem] font-bold tabular-nums uppercase text-zinc-900">
                     {{ row.tps }}
                   </div>
                 </div>
                 <div class="min-w-0 text-left">
-                  <div class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                  <div class="mb-1 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
                     TTFT
                   </div>
-                  <div class="font-mono text-[0.7rem] font-bold uppercase text-zinc-900">
+                  <div class="font-mono text-[0.7rem] font-bold tabular-nums uppercase text-zinc-900">
                     {{ row.ttft | uppercase }}
                   </div>
                 </div>
@@ -90,7 +94,10 @@
 <div class="mt-16 border border-zinc-300 p-8 flex flex-col md:flex-row justify-between items-start gap-8">
   <div class="max-w-xl">
     <h4 class="font-mono text-[0.75rem] font-bold mb-4 flex items-center gap-2 uppercase">
-      <span class="material-icons text-[14px]">verified_user</span>
+      <svg class="h-4 w-4 shrink-0 text-emerald-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
       AUDIT VERIFICATION CERTIFICATE
     </h4>
     <p class="font-mono text-[0.7rem] text-zinc-600 uppercase leading-loose">
