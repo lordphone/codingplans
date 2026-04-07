@@ -17,8 +17,9 @@ import { APP_VERSION } from '../../version';
           <span class="font-mono text-[9px] text-zinc-400 uppercase">v{{ appVersion }}</span>
         </div>
         <div class="flex gap-12">
-          <a routerLink="/directory" 
+          <a routerLink="/directory"
              routerLinkActive="border-b border-zinc-900 text-zinc-900"
+             [routerLinkActiveOptions]="{ exact: true }"
              class="font-['Inter'] uppercase tracking-[0.2em] text-[10px] font-bold text-zinc-400 pb-1 hover:text-zinc-900 transition-colors">
             DIRECTORY
           </a>

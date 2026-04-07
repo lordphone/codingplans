@@ -8,6 +8,12 @@ import type {
   PlanPerformancePage,
   PlanQuantRunRow
 } from '../pages/plan/plan.models';
+import type {
+  ProviderPageData,
+  ProviderPageModelRow,
+  ProviderPagePlan,
+  ProviderPageQuantColor
+} from '../pages/provider/provider.models';
 import type { BenchmarkRun, ProviderWithPlansAndModels } from '../types/database.types';
 
 const DIRECTORY_PROVIDER_SELECT = `
@@ -70,36 +76,7 @@ export class SupabaseService {
       ...new Set(providers.flatMap(p => (p.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id)))
     ];
 
-    const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
-    const latestQuantByPlanModel = new Map<string, string>();
-
-    if (planIds.length > 0) {
-      const sinceIso = rollingWindowStartUtcIso(BENCHMARK_ROLLING_DAYS);
-
-      const [perfRes, quantRes] = await Promise.all([
-        this.supabase
-          .from('benchmark_runs')
-          .select('plan_id, model_id, tps, ttft_s, run_at')
-          .in('plan_id', planIds)
-          .gte('run_at', sinceIso),
-        this.supabase
-          .from('benchmark_runs')
-          .select('plan_id, model_id, quantization, run_at')
-          .in('plan_id', planIds)
-          .not('quantization', 'is', null)
-          .order('run_at', { ascending: false })
-      ]);
-
-      if (perfRes.error) {
-        throw perfRes.error;
-      }
-      if (quantRes.error) {
-        throw quantRes.error;
-      }
-
-      buildSevenDayStatsIntoMap((perfRes.data ?? []) as BenchmarkRun[], statsByPlanModel);
-      buildLatestQuantizationMap(quantRes.data ?? [], latestQuantByPlanModel);
-    }
+    const { statsByPlanModel, latestQuantByPlanModel } = await this.loadBenchmarkAggregatesForPlanIds(planIds);
 
     return mapProvidersToDirectory(providers, statsByPlanModel, latestQuantByPlanModel);
   }
@@ -188,6 +165,92 @@ export class SupabaseService {
     });
 
     return { ...baseMeta, models };
+  }
+
+  /**
+   * One provider by `slug` (same as directory URL segment): nested plans → plan_models → models;
+   * **7-day** TPS/TTFT averages and **latest** non-null quantization per plan+model (same rules as directory).
+   */
+  async fetchProviderPageFromSupabase(providerSlug: string): Promise<ProviderPageData | null> {
+    const { data: raw, error } = await this.supabase
+      .from('providers')
+      .select(DIRECTORY_PROVIDER_SELECT)
+      .eq('slug', providerSlug)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+    if (!raw) {
+      return null;
+    }
+
+    const provider = raw as ProviderWithPlansAndModels;
+    const planIds = [...new Set((provider.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id))];
+
+    const { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso } =
+      await this.loadBenchmarkAggregatesForPlanIds(planIds);
+
+    const plans = mapPlansForProviderPage(provider, statsByPlanModel, latestQuantByPlanModel);
+
+    return {
+      providerName: provider.name,
+      lastUpdated: formatLastUpdatedUtc(latestRunAtIso, provider.created_at),
+      plans
+    };
+  }
+
+  private async loadBenchmarkAggregatesForPlanIds(planIds: string[]): Promise<{
+    statsByPlanModel: Map<string, PlanModelBenchmarkStats>;
+    latestQuantByPlanModel: Map<string, string>;
+    latestRunAtIso: string | null;
+  }> {
+    const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
+    const latestQuantByPlanModel = new Map<string, string>();
+    let latestRunAtIso: string | null = null;
+
+    if (planIds.length === 0) {
+      return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso };
+    }
+
+    const sinceIso = rollingWindowStartUtcIso(BENCHMARK_ROLLING_DAYS);
+
+    const [perfRes, quantRes, latestRes] = await Promise.all([
+      this.supabase
+        .from('benchmark_runs')
+        .select('plan_id, model_id, tps, ttft_s, run_at')
+        .in('plan_id', planIds)
+        .gte('run_at', sinceIso),
+      this.supabase
+        .from('benchmark_runs')
+        .select('plan_id, model_id, quantization, run_at')
+        .in('plan_id', planIds)
+        .not('quantization', 'is', null)
+        .order('run_at', { ascending: false }),
+      this.supabase
+        .from('benchmark_runs')
+        .select('run_at')
+        .in('plan_id', planIds)
+        .order('run_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ]);
+
+    if (perfRes.error) {
+      throw perfRes.error;
+    }
+    if (quantRes.error) {
+      throw quantRes.error;
+    }
+    if (latestRes.error) {
+      throw latestRes.error;
+    }
+
+    buildSevenDayStatsIntoMap((perfRes.data ?? []) as BenchmarkRun[], statsByPlanModel);
+    buildLatestQuantizationMap(quantRes.data ?? [], latestQuantByPlanModel);
+    latestRunAtIso = latestRes.data?.run_at ?? null;
+
+    return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso };
   }
 
   async getData(table: string) {
@@ -392,8 +455,8 @@ function mapOnePlan(
 const USAGE_PLACEHOLDER = '—';
 
 /**
- * Low-bit integer weights (INT4/INT8, etc.) — flag like provider-detail “aggressive” tiers (red, not FP16-green).
- * Shared with plan page quantization timeline.
+ * Low-bit integer weights (INT4/INT8, etc.) — flag like provider page “aggressive” tiers (red, not FP16-green).
+ * Shared with directory, provider page, and plan page quantization display.
  */
 export function inferQuantizationStatusFromLabel(quantization: string): 'scam' | 'verified' {
   const q = quantization.toLowerCase();
@@ -502,5 +565,90 @@ function formatMonthlyPrice(amount: number | null, currency: string): string {
   } catch {
     return `${amount} ${currency}`;
   }
+}
+
+function mapPlansForProviderPage(
+  provider: ProviderWithPlansAndModels,
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
+  latestQuantByPlanModel: Map<string, string>
+): ProviderPagePlan[] {
+  return (provider.plans ?? [])
+    .filter(pl => pl.is_active)
+    .sort((a, b) => comparePlansByPriceThenName(a, b))
+    .map(pl => mapOnePlanForProviderPage(pl, statsByPlanModel, latestQuantByPlanModel))
+    .filter((p): p is ProviderPagePlan => p !== null);
+}
+
+function mapOnePlanForProviderPage(
+  plan: ProviderWithPlansAndModels['plans'][number],
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
+  latestQuantByPlanModel: Map<string, string>
+): ProviderPagePlan | null {
+  const junctions = [...(plan.plan_models ?? [])].sort((a, b) =>
+    (a.models?.name ?? '').localeCompare(b.models?.name ?? '')
+  );
+
+  const models: ProviderPageModelRow[] = [];
+  for (const pm of junctions) {
+    const model = pm.models;
+    if (!model?.slug) {
+      continue;
+    }
+    const key = `${plan.id}:${pm.model_id}`;
+    const stats = statsByPlanModel.get(key);
+    const latestQ = latestQuantByPlanModel.get(key)?.trim();
+
+    let quantizationColor: ProviderPageQuantColor;
+    let quantization: string;
+    if (!latestQ) {
+      quantization = '—';
+      quantizationColor = 'neutral';
+    } else {
+      quantization = latestQ.toUpperCase();
+      quantizationColor = inferQuantizationStatusFromLabel(latestQ) === 'scam' ? 'tertiary' : 'secondary';
+    }
+
+    models.push({
+      id: model.slug,
+      name: model.name,
+      quantization,
+      quantizationColor,
+      tps: stats?.avgTps != null ? String(Math.round(stats.avgTps)) : '—',
+      ttft: formatProviderTtft(stats?.avgTtftS ?? null)
+    });
+  }
+
+  if (models.length === 0) {
+    return null;
+  }
+
+  return {
+    id: plan.slug,
+    name: plan.name,
+    tierId: plan.slug.replace(/-/g, ' ').toUpperCase(),
+    price: formatMonthlyPrice(plan.price_per_month, plan.currency),
+    period: '/ MO',
+    models
+  };
+}
+
+function formatLastUpdatedUtc(latestRunAt: string | null, fallbackCreatedAt: string): string {
+  const iso = latestRunAt ?? fallbackCreatedAt;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return '—';
+  }
+  return `${d.toISOString().replace('T', ' ').slice(0, 19)} UTC`;
+}
+
+/** TTFT for provider cards: seconds → `0.75S`, sub-second → `NNN MS`. */
+function formatProviderTtft(seconds: number | null): string {
+  if (seconds == null || Number.isNaN(seconds)) {
+    return '—';
+  }
+  if (seconds < 1) {
+    return `${Math.round(seconds * 1000)} MS`;
+  }
+  return `${seconds.toFixed(2)}S`;
 }
 

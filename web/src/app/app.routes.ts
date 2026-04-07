@@ -1,8 +1,8 @@
 import { Routes } from '@angular/router';
 import { LayoutComponent } from './components/layout/layout.component';
 import { DirectoryComponent } from './pages/directory/directory.component';
-import { ProviderDetailComponent } from './pages/provider-detail/provider-detail.component';
 import { PlanComponent } from './pages/plan/plan.component';
+import { ProviderComponent } from './pages/provider/provider.component';
 
 export const routes: Routes = [
   {
@@ -19,16 +19,16 @@ export const routes: Routes = [
         component: DirectoryComponent
       },
       {
-        path: 'directory/:providerId',
-        component: ProviderDetailComponent
-      },
-      {
         path: 'directory/:providerId/:planId/:modelSlug',
         component: PlanComponent
       },
       {
         path: 'directory/:providerId/:planId',
         component: PlanComponent
+      },
+      {
+        path: 'directory/:providerId',
+        component: ProviderComponent
       },
       {
         path: 'benchmarks',
