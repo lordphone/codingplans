@@ -3,14 +3,12 @@ import {
   Component,
   computed,
   inject,
-  OnInit,
   signal
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { DirectorySnapshotService } from '../../services/directory-snapshot.service';
-import { SupabaseService } from '../../services/supabase.service';
+import { CatalogStore } from '../../services/catalog-store.service';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
 
 interface DirectoryViewModel {
@@ -79,9 +77,8 @@ function computeTpsBarPercent(tps: number, maxTps: number): number {
   templateUrl: './directory.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DirectoryComponent implements OnInit {
-  private readonly supabase = inject(SupabaseService);
-  private readonly directorySnapshot = inject(DirectorySnapshotService);
+export class DirectoryComponent {
+  private readonly catalog = inject(CatalogStore);
 
   /** Shared `<th>` classes (bordered columns vs last column). */
   readonly tableHeadCellClass =
@@ -99,32 +96,10 @@ export class DirectoryComponent implements OnInit {
   ] as const;
 
   readonly searchQuery = signal('');
-  readonly providers = signal<DirectoryProvider[]>([]);
-  readonly loading = signal(true);
-  readonly loadError = signal<string | null>(null);
+  readonly loading = this.catalog.loading;
+  readonly loadError = this.catalog.loadError;
 
-  readonly view = computed(() => buildDirectoryView(this.providers(), this.searchQuery()));
-
-  async ngOnInit(): Promise<void> {
-    this.loadError.set(null);
-    this.loading.set(true);
-    try {
-      const data = await this.supabase.fetchDirectoryFromSupabase();
-      this.providers.set(data);
-      this.directorySnapshot.setProviders(data);
-    } catch (e) {
-      console.error('Directory load failed', e);
-      const message =
-        e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
-          ? (e as { message: string }).message
-          : 'Could not load directory from Supabase.';
-      this.loadError.set(message);
-      this.providers.set([]);
-      this.directorySnapshot.setProviders([]);
-    } finally {
-      this.loading.set(false);
-    }
-  }
+  readonly view = computed(() => buildDirectoryView(this.catalog.providers(), this.searchQuery()));
 
   tpsBarPercent(tps: number, maxTps: number): number {
     return computeTpsBarPercent(tps, maxTps);

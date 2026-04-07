@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { APP_VERSION } from '../../version';
+import { CatalogStore } from '../../services/catalog-store.service';
 
 @Component({
   selector: 'app-layout',
@@ -39,6 +40,11 @@ import { APP_VERSION } from '../../version';
     </div>
   `
 })
-export class LayoutComponent {
+export class LayoutComponent implements OnInit {
+  private readonly catalog = inject(CatalogStore);
   readonly appVersion = APP_VERSION;
+
+  ngOnInit(): void {
+    void this.catalog.ensureLoaded();
+  }
 }

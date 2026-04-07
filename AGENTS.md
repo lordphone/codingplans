@@ -63,7 +63,7 @@ Use `benchmarks/providers.example.json` as a template; real `providers.json` is 
         │   ├── app.config.server.ts
         │   ├── app.routes.ts
         │   ├── app.routes.server.ts
-        │   ├── components/layout/     # shell: top nav + router-outlet
+        │   ├── components/layout/     # shell: top nav + router-outlet; warms CatalogStore
         │   ├── pages/
         │   │   ├── directory/         # Supabase-backed comparison table
         │   │   ├── plan/              # per-plan performance (charts, model tabs)
@@ -71,8 +71,8 @@ Use `benchmarks/providers.example.json` as a template; real `providers.json` is 
         │   │   ├── benchmarks/        # placeholder (“Benchmark Explorer”)
         │   │   └── models/            # placeholder (lazy-loaded)
         │   ├── services/
-        │   │   ├── supabase.service.ts
-        │   │   └── directory-snapshot.service.ts   # in-memory last directory load for plan shell
+        │   │   ├── supabase.service.ts      # PostgREST + mapping; `fetchDirectoryFromSupabase` builds all client views
+        │   │   └── catalog-store.service.ts # app-wide catalog cache (memory + sessionStorage TTL)
         │   ├── types/database.types.ts
         │   └── version.ts           # APP_VERSION from package.json → nav
         └── environments/
@@ -104,18 +104,17 @@ There is **no** `supabase/` migrations folder in the repo; schema changes are ap
 **Directory query (`SupabaseService.fetchDirectoryFromSupabase`):**
 
 1. Nested select: `providers` → `plans` → `plan_models` → `models` (active plans only).
-2. Second query: `benchmark_runs` for those `plan_id`s — **TPS/TTFT:** rolling **7-day** averages; **quantization:** latest non-null row per `(plan_id, model_id)` (any time).
-3. PostgREST embed result is cast `as unknown as ProviderWithPlansAndModels[]` for TypeScript.
+2. Benchmark queries for those `plan_id`s — **TPS/TTFT:** rolling **30-day** window averages; **quantization:** latest non-null row per `(plan_id, model_id)` (any time).
+3. Returns **`DirectoryFetchResult`:** directory rows, a `Map` of prebuilt **`PlanPerformancePage`** per plan, and a `Map` of **`ProviderPageData`** per provider slug (same numbers as directory; provider “last updated” uses max `run_at` from window runs + quant rows for that provider’s plans).
+4. PostgREST embed result is cast `as unknown as ProviderWithPlansAndModels[]` for TypeScript.
 
-**Provider page (`fetchProviderPageFromSupabase`):** same nested provider/plan/model shape and the **same 7-day / latest-quant** benchmark rules as the directory, formatted for the provider overview UI.
+**`CatalogStore` (`catalog-store.service.ts`):** root injectable; **`LayoutComponent`** calls **`ensureLoaded()`** on init so any first route under the shell starts (or reuses) one catalog load. Holds providers, plan pages, and provider pages; **3h TTL** in memory and **`sessionStorage`** (key `codingplans.catalog.v1`) when the payload fits. **`refresh()`** / **`ensureLoaded({ force: true })`** bypasses TTL. Pages read **`providers`**, **`getPlanPage`**, **`getProviderPage`** — they do not own fetches.
 
-**Plan performance page (`fetchPlanPerformancePage`):** resolves plan by `provider.slug` + `plans.slug`; loads `benchmark_runs` for the last **`PLAN_PAGE_BENCHMARK_DAYS` (30)** days, with daily buckets for TPS/TTFT series and individual quantization runs per model.
+**Plan performance (`fetchPlanPerformancePage`):** used only when the store has no prebuilt page for that plan (e.g. cold deep link); same **30-day** window and chart shape as the prefetch.
 
 **Client routing IDs:** `DirectoryProvider.id` and `DirectoryPlan.id` in the UI are the DB **`slug`** values (not UUIDs), matching URL segments.
 
 **Usage limits:** `plan_models.usage_limit` is mapped to a placeholder label in code (`USAGE_PLACEHOLDER`); the directory shows that placeholder until real limits are surfaced.
-
-**`DirectorySnapshotService`:** after a successful directory load, keeps the listing in memory so **`PlanComponent`** can render header/model tabs immediately on in-app navigation while `fetchPlanPerformancePage` loads chart data.
 
 **RLS:** `anon` can **SELECT** public directory data. **Inserts/updates** (benchmarks, manual seeding) need the **service role** or a privileged path — not the anon key.
 
@@ -140,7 +139,7 @@ When writing benchmark rows, resolve API model name → `models.id`.
 ## Plan page (`PlanComponent`)
 
 - **Route:** `/directory/:providerId/:planId` with optional **`/:modelSlug`** (param names are historical; values are **slugs**).
-- **Data:** Supabase `fetchPlanPerformancePage`; shell metadata can be hydrated from **`DirectorySnapshotService`** when navigating from the directory.
+- **Data:** **`CatalogStore.getPlanPage`** after **`ensureLoaded()`**; falls back to **`fetchPlanPerformancePage`** if missing.
 - **UI:** Model tabs, TPS/TTFT sparklines over the configured window, quantization run list (see `plan.component.ts` / `plan.models.ts`).
 
 ## Security
@@ -164,7 +163,7 @@ When writing benchmark rows, resolve API model name → `models.id`.
 |------|---------|
 | `/` | Redirects to `/directory` |
 | `/directory` | Comparison table + search |
-| `/directory/:providerId` | Provider page (`ProviderComponent`) — **Supabase** |
+| `/directory/:providerId` | Provider page (`ProviderComponent`) — **`CatalogStore`** |
 | `/directory/:providerId/:planId` | Plan performance page (`PlanComponent`) |
 | `/directory/:providerId/:planId/:modelSlug` | Same plan page; **modelSlug** selects the active model tab |
 | `/benchmarks` | Placeholder (“Benchmark Explorer”) |

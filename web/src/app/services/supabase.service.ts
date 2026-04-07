@@ -16,6 +16,17 @@ import type {
 } from '../pages/provider/provider.models';
 import type { BenchmarkRun, ProviderWithPlansAndModels } from '../types/database.types';
 
+/** Result of `fetchDirectoryFromSupabase`: directory table, plan pages, and provider overview pages (one Supabase load). */
+export interface DirectoryFetchResult {
+  providers: DirectoryProvider[];
+  planPagesByKey: Map<string, PlanPerformancePage>;
+  providerPagesBySlug: Map<string, ProviderPageData>;
+}
+
+function planPageCacheKey(providerSlug: string, planSlug: string): string {
+  return `${providerSlug}::${planSlug}`;
+}
+
 const DIRECTORY_PROVIDER_SELECT = `
   id,
   name,
@@ -57,11 +68,13 @@ export class SupabaseService {
   }
 
   /**
-   * Directory listing: nested providers → plans → plan_models → models; **7-day averages** for TPS/TTFT;
-   * **quantization** from the **latest** run (any time) with non-null `quantization` for that plan+model.
+   * Directory listing: nested providers → plans → plan_models → models; **rolling-window averages** for TPS/TTFT
+   * over {@link BENCHMARK_WINDOW_DAYS} days; **quantization** from the **latest** run (any time) with non-null
+   * `quantization` for that plan+model. Also returns a map of prebuilt {@link PlanPerformancePage} entries so
+   * plan routes can skip refetching after an in-app visit to the directory.
    * **Usage limits** column shows '—' until we surface `plan_models.usage_limit` again.
    */
-  async fetchDirectoryFromSupabase(): Promise<DirectoryProvider[]> {
+  async fetchDirectoryFromSupabase(): Promise<DirectoryFetchResult> {
     const { data: raw, error: providersError } = await this.supabase
       .from('providers')
       .select(DIRECTORY_PROVIDER_SELECT)
@@ -76,14 +89,25 @@ export class SupabaseService {
       ...new Set(providers.flatMap(p => (p.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id)))
     ];
 
-    const { statsByPlanModel, latestQuantByPlanModel } = await this.loadBenchmarkAggregatesForPlanIds(planIds);
+    const { statsByPlanModel, latestQuantByPlanModel, runsByPlanId, quantRowsDesc } =
+      await this.loadBenchmarkAggregatesForPlanIds(planIds);
 
-    return mapProvidersToDirectory(providers, statsByPlanModel, latestQuantByPlanModel);
+    const directoryProviders = mapProvidersToDirectory(providers, statsByPlanModel, latestQuantByPlanModel);
+    const planPagesByKey = buildPlanPagesBySlugKey(providers, runsByPlanId);
+    const providerPagesBySlug = buildProviderPagesBySlug(
+      providers,
+      statsByPlanModel,
+      latestQuantByPlanModel,
+      runsByPlanId,
+      quantRowsDesc
+    );
+
+    return { providers: directoryProviders, planPagesByKey, providerPagesBySlug };
   }
 
   /**
    * Plan page: one plan (by provider + plan slug), models on that plan, and benchmark runs from the last
-   * {@link PLAN_PAGE_BENCHMARK_DAYS} days (daily buckets for TPS / TTFT; quantization rows are individual runs).
+   * {@link BENCHMARK_WINDOW_DAYS} days (daily buckets for TPS / TTFT; quantization rows are individual runs).
    */
   async fetchPlanPerformancePage(providerSlug: string, planSlug: string): Promise<PlanPerformancePage | null> {
     const { data: provider, error: providerError } = await this.supabase
@@ -118,25 +142,7 @@ export class SupabaseService {
       return null;
     }
 
-    const junctions = [...(planRow.plan_models ?? [])]
-      .filter((pm): pm is PlanModelJunction => Boolean(pm.models?.slug))
-      .sort((a, b) => (a.models.name ?? '').localeCompare(b.models.name ?? ''));
-
-    const baseMeta = {
-      providerName: provider.name,
-      providerSlug: provider.slug,
-      planName: planRow.name,
-      planSlug: planRow.slug,
-      planSubtitle: planRow.description?.trim() ?? '',
-      priceLabel: formatMonthlyPrice(planRow.price_per_month, planRow.currency),
-      periodLabel: '/ month'
-    };
-
-    if (junctions.length === 0) {
-      return { ...baseMeta, models: [] };
-    }
-
-    const sinceIso = rollingWindowStartUtcIso(PLAN_PAGE_BENCHMARK_DAYS);
+    const sinceIso = rollingWindowStartUtcIso(BENCHMARK_WINDOW_DAYS);
     const { data: runRows, error: runsError } = await this.supabase
       .from('benchmark_runs')
       .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
@@ -149,78 +155,35 @@ export class SupabaseService {
     }
 
     const runs = (runRows ?? []) as BenchmarkRun[];
-    const dayMeta = lastNDayKeysUtc(PLAN_PAGE_BENCHMARK_DAYS);
-
-    const models: PlanPerformanceModelBlock[] = junctions.map(pm => {
-      const series = buildDaySeriesForModel(pm.model_id, runs, dayMeta);
-      const quantRuns = buildQuantRunsForModel(pm.model_id, runs);
-      return {
-        modelId: pm.model_id,
-        modelName: pm.models.name,
-        modelSlug: pm.models.slug,
-        tpsSeries: series,
-        ttftSeries: series,
-        quantRuns
-      };
-    });
-
-    return { ...baseMeta, models };
-  }
-
-  /**
-   * One provider by `slug` (same as directory URL segment): nested plans → plan_models → models;
-   * **7-day** TPS/TTFT averages and **latest** non-null quantization per plan+model (same rules as directory).
-   */
-  async fetchProviderPageFromSupabase(providerSlug: string): Promise<ProviderPageData | null> {
-    const { data: raw, error } = await this.supabase
-      .from('providers')
-      .select(DIRECTORY_PROVIDER_SELECT)
-      .eq('slug', providerSlug)
-      .maybeSingle();
-
-    if (error) {
-      throw error;
-    }
-    if (!raw) {
-      return null;
-    }
-
-    const provider = raw as ProviderWithPlansAndModels;
-    const planIds = [...new Set((provider.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id))];
-
-    const { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso } =
-      await this.loadBenchmarkAggregatesForPlanIds(planIds);
-
-    const plans = mapPlansForProviderPage(provider, statsByPlanModel, latestQuantByPlanModel);
-
-    return {
-      providerName: provider.name,
-      lastUpdated: formatLastUpdatedUtc(latestRunAtIso, provider.created_at),
-      plans
-    };
+    return buildPlanPerformancePageFromRuns(provider.name, provider.slug, planRow, runs);
   }
 
   private async loadBenchmarkAggregatesForPlanIds(planIds: string[]): Promise<{
     statsByPlanModel: Map<string, PlanModelBenchmarkStats>;
     latestQuantByPlanModel: Map<string, string>;
     latestRunAtIso: string | null;
+    runsByPlanId: Map<string, BenchmarkRun[]>;
+    quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>>;
   }> {
     const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
     const latestQuantByPlanModel = new Map<string, string>();
     let latestRunAtIso: string | null = null;
+    const runsByPlanId = new Map<string, BenchmarkRun[]>();
+    const quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>> = [];
 
     if (planIds.length === 0) {
-      return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso };
+      return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso, runsByPlanId, quantRowsDesc };
     }
 
-    const sinceIso = rollingWindowStartUtcIso(BENCHMARK_ROLLING_DAYS);
+    const sinceIso = rollingWindowStartUtcIso(BENCHMARK_WINDOW_DAYS);
 
-    const [perfRes, quantRes, latestRes] = await Promise.all([
+    const [runsRes, quantRes, latestRes] = await Promise.all([
       this.supabase
         .from('benchmark_runs')
-        .select('plan_id, model_id, tps, ttft_s, run_at')
+        .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
         .in('plan_id', planIds)
-        .gte('run_at', sinceIso),
+        .gte('run_at', sinceIso)
+        .order('run_at', { ascending: true }),
       this.supabase
         .from('benchmark_runs')
         .select('plan_id, model_id, quantization, run_at')
@@ -236,8 +199,8 @@ export class SupabaseService {
         .maybeSingle()
     ]);
 
-    if (perfRes.error) {
-      throw perfRes.error;
+    if (runsRes.error) {
+      throw runsRes.error;
     }
     if (quantRes.error) {
       throw quantRes.error;
@@ -246,31 +209,22 @@ export class SupabaseService {
       throw latestRes.error;
     }
 
-    buildSevenDayStatsIntoMap((perfRes.data ?? []) as BenchmarkRun[], statsByPlanModel);
-    buildLatestQuantizationMap(quantRes.data ?? [], latestQuantByPlanModel);
+    const windowRuns = (runsRes.data ?? []) as BenchmarkRun[];
+    buildRollingWindowStatsIntoMap(windowRuns, statsByPlanModel);
+    const quantData = (quantRes.data ?? []) as Array<Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'quantization' | 'run_at'>>;
+    buildLatestQuantizationMap(quantData, latestQuantByPlanModel);
     latestRunAtIso = latestRes.data?.run_at ?? null;
+    partitionRunsByPlanId(windowRuns, runsByPlanId);
+    for (const r of quantData) {
+      quantRowsDesc.push({ plan_id: r.plan_id, run_at: r.run_at });
+    }
 
-    return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso };
-  }
-
-  async getData(table: string) {
-    const { data, error } = await this.supabase.from(table).select('*');
-    if (error) throw error;
-    return data;
-  }
-
-  async getById(table: string, id: string) {
-    const { data, error } = await this.supabase.from(table).select('*').eq('id', id).single();
-    if (error) throw error;
-    return data;
+    return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso, runsByPlanId, quantRowsDesc };
   }
 }
 
-/** How far back to include runs when computing directory performance averages (Option A: aggregate in app). */
-const BENCHMARK_ROLLING_DAYS = 7;
-
-/** Plan page charts: UTC daily buckets over this many days. */
-const PLAN_PAGE_BENCHMARK_DAYS = 30;
+/** Directory averages, plan-page charts, and directory snapshot: same UTC rolling window (daily buckets on plan UI). */
+const BENCHMARK_WINDOW_DAYS = 30;
 
 interface PlanModelJunction {
   model_id: string;
@@ -300,7 +254,143 @@ function rollingWindowStartUtcIso(days: number): string {
   return d.toISOString();
 }
 
-function buildSevenDayStatsIntoMap(rows: BenchmarkRun[], target: Map<string, PlanModelBenchmarkStats>): void {
+function partitionRunsByPlanId(rows: BenchmarkRun[], target: Map<string, BenchmarkRun[]>): void {
+  for (const r of rows) {
+    const pid = r.plan_id;
+    let arr = target.get(pid);
+    if (!arr) {
+      arr = [];
+      target.set(pid, arr);
+    }
+    arr.push(r);
+  }
+}
+
+function maxRunAtIsoForPlanIds(runsByPlanId: Map<string, BenchmarkRun[]>, planIds: string[]): string | null {
+  let best: string | null = null;
+  for (const pid of planIds) {
+    const runs = runsByPlanId.get(pid);
+    if (!runs) {
+      continue;
+    }
+    for (const r of runs) {
+      if (!best || r.run_at > best) {
+        best = r.run_at;
+      }
+    }
+  }
+  return best;
+}
+
+function maxRunAtFromQuantRowsForPlans(
+  rows: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>>,
+  planIdSet: Set<string>
+): string | null {
+  let best: string | null = null;
+  for (const r of rows) {
+    if (!planIdSet.has(r.plan_id)) {
+      continue;
+    }
+    if (!best || r.run_at > best) {
+      best = r.run_at;
+    }
+  }
+  return best;
+}
+
+function laterIso(a: string | null, b: string | null): string | null {
+  if (!a) {
+    return b;
+  }
+  if (!b) {
+    return a;
+  }
+  return a > b ? a : b;
+}
+
+function buildProviderPagesBySlug(
+  providers: ProviderWithPlansAndModels[],
+  statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
+  latestQuantByPlanModel: Map<string, string>,
+  runsByPlanId: Map<string, BenchmarkRun[]>,
+  quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>>
+): Map<string, ProviderPageData> {
+  const out = new Map<string, ProviderPageData>();
+  for (const p of providers) {
+    const activePlans = (p.plans ?? []).filter(pl => pl.is_active);
+    const planIds = activePlans.map(pl => pl.id);
+    const planIdSet = new Set(planIds);
+    const fromWindow = maxRunAtIsoForPlanIds(runsByPlanId, planIds);
+    const fromQuant = maxRunAtFromQuantRowsForPlans(quantRowsDesc, planIdSet);
+    const latestRunAtIso = laterIso(fromWindow, fromQuant);
+    const plans = mapPlansForProviderPage(p, statsByPlanModel, latestQuantByPlanModel);
+    out.set(p.slug, {
+      providerName: p.name,
+      lastUpdated: formatLastUpdatedUtc(latestRunAtIso, p.created_at),
+      plans
+    });
+  }
+  return out;
+}
+
+function buildPlanPagesBySlugKey(
+  providers: ProviderWithPlansAndModels[],
+  runsByPlanId: Map<string, BenchmarkRun[]>
+): Map<string, PlanPerformancePage> {
+  const out = new Map<string, PlanPerformancePage>();
+  for (const p of providers) {
+    for (const pl of (p.plans ?? []).filter(pl => pl.is_active)) {
+      const runs = runsByPlanId.get(pl.id) ?? [];
+      const page = buildPlanPerformancePageFromRuns(p.name, p.slug, pl, runs);
+      out.set(planPageCacheKey(p.slug, pl.slug), page);
+    }
+  }
+  return out;
+}
+
+/** Shared by directory prefetch and `fetchPlanPerformancePage` (single-plan query). */
+function buildPlanPerformancePageFromRuns(
+  providerName: string,
+  providerSlug: string,
+  planRow: PlanWithModelsEmbed,
+  runs: BenchmarkRun[]
+): PlanPerformancePage {
+  const junctions = [...(planRow.plan_models ?? [])]
+    .filter((pm): pm is PlanModelJunction => Boolean(pm.models?.slug))
+    .sort((a, b) => (a.models.name ?? '').localeCompare(b.models.name ?? ''));
+
+  const baseMeta = {
+    providerName,
+    providerSlug,
+    planName: planRow.name,
+    planSlug: planRow.slug,
+    planSubtitle: planRow.description?.trim() ?? '',
+    priceLabel: formatMonthlyPrice(planRow.price_per_month, planRow.currency),
+    periodLabel: '/ month'
+  };
+
+  if (junctions.length === 0) {
+    return { ...baseMeta, models: [] };
+  }
+
+  const dayMeta = lastNDayKeysUtc(BENCHMARK_WINDOW_DAYS);
+  const models: PlanPerformanceModelBlock[] = junctions.map(pm => {
+    const series = buildDaySeriesForModel(pm.model_id, runs, dayMeta);
+    const quantRuns = buildQuantRunsForModel(pm.model_id, runs);
+    return {
+      modelId: pm.model_id,
+      modelName: pm.models.name,
+      modelSlug: pm.models.slug,
+      tpsSeries: series,
+      ttftSeries: series,
+      quantRuns
+    };
+  });
+
+  return { ...baseMeta, models };
+}
+
+function buildRollingWindowStatsIntoMap(rows: BenchmarkRun[], target: Map<string, PlanModelBenchmarkStats>): void {
   type Acc = { tpsValues: number[]; ttftValues: number[] };
 
   const accByKey = new Map<string, Acc>();

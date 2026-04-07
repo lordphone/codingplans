@@ -2,35 +2,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { catchError, EMPTY, finalize, from, map, switchMap } from 'rxjs';
-import type { DirectoryPlan, DirectoryProvider } from '../directory/directory.models';
-import { DirectorySnapshotService } from '../../services/directory-snapshot.service';
+import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
+import { CatalogStore } from '../../services/catalog-store.service';
 import { SupabaseService } from '../../services/supabase.service';
-import type { PlanPerformanceDayPoint, PlanPerformanceModelBlock, PlanPerformancePage } from './plan.models';
+import type { PlanPerformanceDayPoint, PlanPerformancePage } from './plan.models';
 
 const WINDOW_DAYS = 30;
-
-/** Plan header + model tabs from directory data; series/quant rows filled in after `fetchPlanPerformancePage`. */
-function buildPlanShellFromDirectory(provider: DirectoryProvider, plan: DirectoryPlan): PlanPerformancePage {
-  const models: PlanPerformanceModelBlock[] = plan.modelRows.map(r => ({
-    modelId: r.modelId,
-    modelName: r.modelName,
-    modelSlug: r.modelSlug,
-    tpsSeries: [],
-    ttftSeries: [],
-    quantRuns: []
-  }));
-  return {
-    providerName: provider.name,
-    providerSlug: provider.id,
-    planName: plan.name,
-    planSlug: plan.id,
-    planSubtitle: plan.subtitle,
-    priceLabel: plan.price,
-    periodLabel: plan.period,
-    models
-  };
-}
 
 // --- Sparkline geometry (SVG paths for plan metric cards) ---
 
@@ -183,14 +160,12 @@ export class PlanComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly supabase = inject(SupabaseService);
-  private readonly directorySnapshot = inject(DirectorySnapshotService);
+  private readonly catalog = inject(CatalogStore);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly windowDays = WINDOW_DAYS;
 
   readonly loading = signal(true);
-  /** True while benchmark series are loading after an instant shell from the directory snapshot. */
-  readonly detailLoading = signal(false);
   readonly loadError = signal<string | null>(null);
   readonly missingParams = signal(false);
   readonly notFound = signal(false);
@@ -231,81 +206,65 @@ export class PlanComponent {
           planSlug: params.get('planId') ?? '',
           modelSlug: (params.get('modelSlug') ?? '').trim()
         })),
-        switchMap(({ providerSlug, planSlug, modelSlug }) => {
-          if (!providerSlug || !planSlug) {
-            this.missingParams.set(true);
-            this.notFound.set(false);
-            this.page.set(null);
-            this.loading.set(false);
-            this.loadError.set(null);
-            return EMPTY;
-          }
-          this.missingParams.set(false);
-
-          const cached = this.page();
-          if (
-            cached &&
-            cached.providerSlug === providerSlug &&
-            cached.planSlug === planSlug
-          ) {
-            this.loading.set(false);
-            this.loadError.set(null);
-            this.syncModelSelectionWithUrl(modelSlug, cached);
-            return EMPTY;
-          }
-
-          const dirHit = this.directorySnapshot.findPlan(providerSlug, planSlug);
-          if (dirHit) {
-            const shell = buildPlanShellFromDirectory(dirHit.provider, dirHit.plan);
-            this.page.set(shell);
-            this.notFound.set(false);
-            this.loadError.set(null);
-            this.loading.set(false);
-            this.syncModelSelectionWithUrl(modelSlug, shell);
-            this.detailLoading.set(true);
-            return from(this.supabase.fetchPlanPerformancePage(providerSlug, planSlug)).pipe(
-              map(data => ({ data, modelSlug } as const)),
-              catchError(err => {
-                console.error('Plan page load failed', err);
-                const message =
-                  err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
-                    ? (err as { message: string }).message
-                    : 'Could not load plan from Supabase.';
-                this.loadError.set(message);
-                this.page.set(null);
+        switchMap(({ providerSlug, planSlug, modelSlug }) =>
+          from(this.catalog.ensureLoaded()).pipe(
+            switchMap(() => {
+              if (!providerSlug || !planSlug) {
+                this.missingParams.set(true);
                 this.notFound.set(false);
+                this.page.set(null);
                 this.loading.set(false);
-                this.detailLoading.set(false);
+                this.loadError.set(null);
                 return EMPTY;
-              }),
-              finalize(() => this.detailLoading.set(false))
-            );
-          }
+              }
+              this.missingParams.set(false);
 
-          this.loading.set(true);
-          this.loadError.set(null);
-          this.detailLoading.set(false);
-          return from(this.supabase.fetchPlanPerformancePage(providerSlug, planSlug)).pipe(
-            map(data => ({ data, modelSlug } as const)),
-            catchError(err => {
-              console.error('Plan page load failed', err);
-              const message =
-                err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
-                  ? (err as { message: string }).message
-                  : 'Could not load plan from Supabase.';
-              this.loadError.set(message);
-              this.page.set(null);
-              this.notFound.set(false);
-              this.loading.set(false);
-              return EMPTY;
+              const cached = this.page();
+              if (
+                cached &&
+                cached.providerSlug === providerSlug &&
+                cached.planSlug === planSlug
+              ) {
+                this.loading.set(false);
+                this.loadError.set(null);
+                this.syncModelSelectionWithUrl(modelSlug, cached);
+                return EMPTY;
+              }
+
+              const cachedPage = this.catalog.getPlanPage(providerSlug, planSlug);
+              if (cachedPage) {
+                this.page.set(cachedPage);
+                this.notFound.set(false);
+                this.loadError.set(null);
+                this.loading.set(false);
+                this.syncModelSelectionWithUrl(modelSlug, cachedPage);
+                return EMPTY;
+              }
+
+              this.loading.set(true);
+              this.loadError.set(null);
+              return from(this.supabase.fetchPlanPerformancePage(providerSlug, planSlug)).pipe(
+                map(data => ({ data, modelSlug } as const)),
+                catchError(err => {
+                  console.error('Plan page load failed', err);
+                  const message =
+                    err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
+                      ? (err as { message: string }).message
+                      : 'Could not load plan from Supabase.';
+                  this.loadError.set(message);
+                  this.page.set(null);
+                  this.notFound.set(false);
+                  this.loading.set(false);
+                  return EMPTY;
+                })
+              );
             })
-          );
-        }),
+          )
+        ),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(({ data, modelSlug }) => {
         this.loading.set(false);
-        this.detailLoading.set(false);
         if (data === null) {
           this.notFound.set(true);
           this.page.set(null);

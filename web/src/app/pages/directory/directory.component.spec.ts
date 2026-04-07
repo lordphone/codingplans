@@ -1,11 +1,12 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { DirectoryComponent } from './directory.component';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
-import { SupabaseService } from '../../services/supabase.service';
+import { CatalogStore } from '../../services/catalog-store.service';
 
-/** Resolves async `ngOnInit` fetch + change detection (zone + microtasks). */
-async function flushDirectoryLoad(fixture: { detectChanges: () => void; whenStable: () => Promise<unknown> }) {
+/** Resolves change detection (zone + microtasks). */
+async function flushView(fixture: { detectChanges: () => void; whenStable: () => Promise<unknown> }) {
   fixture.detectChanges();
   await fixture.whenStable();
   await Promise.resolve();
@@ -50,8 +51,6 @@ function provider(overrides: Partial<DirectoryProvider> = {}): DirectoryProvider
 }
 
 describe('DirectoryComponent', () => {
-  let fetchDirectory: ReturnType<typeof vi.fn>;
-
   function mockProviders(): DirectoryProvider[] {
     return [
       {
@@ -83,64 +82,60 @@ describe('DirectoryComponent', () => {
     ];
   }
 
-  async function setup(fetchImpl: () => Promise<DirectoryProvider[]>) {
-    fetchDirectory = vi.fn().mockImplementation(fetchImpl);
+  async function setup(state?: { providers?: DirectoryProvider[]; loading?: boolean; error?: string | null }) {
+    const providersSig = signal(state?.providers ?? []);
+    const loadingSig = signal(state?.loading ?? false);
+    const errorSig = signal(state?.error ?? null);
+    const mockStore = {
+      providers: providersSig.asReadonly(),
+      loading: loadingSig.asReadonly(),
+      loadError: errorSig.asReadonly(),
+      fetchedAt: signal<number | null>(null).asReadonly(),
+      ensureLoaded: vi.fn().mockResolvedValue(undefined),
+      getPlanPage: vi.fn(),
+      getProviderPage: vi.fn(),
+      refresh: vi.fn()
+    };
     await TestBed.configureTestingModule({
       imports: [DirectoryComponent],
-      providers: [{ provide: SupabaseService, useValue: { fetchDirectoryFromSupabase: fetchDirectory } }, provideRouter([])]
+      providers: [{ provide: CatalogStore, useValue: mockStore }, provideRouter([])]
     }).compileComponents();
 
     const fixture = TestBed.createComponent(DirectoryComponent);
     const component = fixture.componentInstance;
-    await flushDirectoryLoad(fixture);
-    return { fixture, component };
+    await flushView(fixture);
+    return { fixture, component, providersSig, loadingSig, errorSig };
   }
 
   it('should create', async () => {
-    const { component } = await setup(() => Promise.resolve([]));
+    const { component } = await setup();
     expect(component).toBeTruthy();
   });
 
-  it('loads directory data and clears loading state', async () => {
+  it('reflects catalog providers in the view model', async () => {
     const data = mockProviders();
-    const { component } = await setup(() => Promise.resolve(data));
+    const { component } = await setup({ providers: data, loading: false });
 
-    expect(fetchDirectory).toHaveBeenCalledTimes(1);
     expect(component.loading()).toBe(false);
     expect(component.loadError()).toBeNull();
-    expect(component.providers()).toEqual(data);
     expect(component.view().rowCount).toBe(1);
   });
 
-  it('sets error message and clears providers when fetch fails', async () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { component } = await setup(() => Promise.reject(new Error('network')));
+  it('shows catalog load error from store', async () => {
+    const { component } = await setup({ providers: [], error: 'network', loading: false });
 
-    expect(component.loading()).toBe(false);
     expect(component.loadError()).toBe('network');
-    expect(component.providers()).toEqual([]);
-
-    errSpy.mockRestore();
   });
 
-  it('uses fallback error message when rejection is not an Error with a string message', async () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { component } = await setup(() => Promise.reject(undefined));
-
-    expect(component.loadError()).toBe('Could not load directory from Supabase.');
-
-    errSpy.mockRestore();
-  });
-
-  it('shows empty dataset copy when loaded with no providers', async () => {
-    const { fixture } = await setup(() => Promise.resolve([]));
+  it('shows empty dataset copy when catalog has no providers', async () => {
+    const { fixture } = await setup({ providers: [] });
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.textContent).toContain('No providers in the directory yet.');
   });
 
   it('shows no search results when query matches nothing', async () => {
-    const { fixture, component } = await setup(() => Promise.resolve(mockProviders()));
+    const { fixture, component } = await setup({ providers: mockProviders() });
     component.searchQuery.set('zzzz-not-found');
     fixture.detectChanges();
 
@@ -149,7 +144,7 @@ describe('DirectoryComponent', () => {
   });
 
   it('updates result count when search filters rows', async () => {
-    const { fixture, component } = await setup(() => Promise.resolve(mockProviders()));
+    const { fixture, component } = await setup({ providers: mockProviders() });
 
     expect(fixture.nativeElement.textContent).toContain('1 RESULTS');
 
@@ -163,7 +158,7 @@ describe('DirectoryComponent', () => {
   });
 
   it('renders provider name and table headers', async () => {
-    const { fixture } = await setup(() => Promise.resolve(mockProviders()));
+    const { fixture } = await setup({ providers: mockProviders() });
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.querySelector('h1')?.textContent?.trim()).toBe('Provider & Plan Directory');
@@ -174,7 +169,7 @@ describe('DirectoryComponent', () => {
 
   describe('search and view()', () => {
     it('leaves data unchanged when query is empty or whitespace', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component, providersSig } = await setup({ providers: [] });
       const p1 = provider({
         id: 'p1',
         name: 'Alpha',
@@ -183,7 +178,7 @@ describe('DirectoryComponent', () => {
           plan({ id: 'pro', name: 'Pro', modelRows: [row({ rowId: '2', modelName: 'Slow' })] })
         ]
       });
-      component.providers.set([p1]);
+      providersSig.set([p1]);
 
       component.searchQuery.set('');
       expect(component.view().providers).toEqual([p1]);
@@ -193,7 +188,7 @@ describe('DirectoryComponent', () => {
     });
 
     it('keeps only plans with matching rows', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component, providersSig } = await setup({ providers: [] });
       const p1 = provider({
         id: 'p1',
         name: 'Alpha',
@@ -202,7 +197,7 @@ describe('DirectoryComponent', () => {
           plan({ id: 'pro', name: 'Pro', modelRows: [row({ rowId: '2', modelName: 'Slow' })] })
         ]
       });
-      component.providers.set([p1]);
+      providersSig.set([p1]);
       component.searchQuery.set('fast');
 
       const vm = component.view();
@@ -213,7 +208,7 @@ describe('DirectoryComponent', () => {
     });
 
     it('drops providers with no matching plans', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component, providersSig } = await setup({ providers: [] });
       const p1 = provider({
         id: 'p1',
         name: 'Alpha',
@@ -222,14 +217,14 @@ describe('DirectoryComponent', () => {
           plan({ id: 'pro', name: 'Pro', modelRows: [row({ rowId: '2', modelName: 'Slow' })] })
         ]
       });
-      component.providers.set([p1]);
+      providersSig.set([p1]);
       component.searchQuery.set('nope');
 
       expect(component.view().providers).toHaveLength(0);
     });
 
     it('matches by provider id so rows are not over-filtered', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component, providersSig } = await setup({ providers: [] });
       const p1 = provider({
         id: 'p1',
         name: 'Alpha',
@@ -238,15 +233,15 @@ describe('DirectoryComponent', () => {
           plan({ id: 'pro', name: 'Pro', modelRows: [row({ rowId: '2', modelName: 'Slow' })] })
         ]
       });
-      component.providers.set([p1]);
+      providersSig.set([p1]);
       component.searchQuery.set('p1');
 
       expect(component.view().providers[0].plans.length).toBe(2);
     });
 
     it('computes rowCount across providers and plans', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
-      component.providers.set([
+      const { component, providersSig } = await setup({ providers: [] });
+      providersSig.set([
         provider({
           plans: [
             plan({ modelRows: [row({ rowId: 'a' }), row({ rowId: 'b' })] }),
@@ -262,8 +257,8 @@ describe('DirectoryComponent', () => {
     });
 
     it('applies search to rowCount', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
-      component.providers.set([
+      const { component, providersSig } = await setup({ providers: [] });
+      providersSig.set([
         provider({
           plans: [
             plan({
@@ -278,8 +273,8 @@ describe('DirectoryComponent', () => {
     });
 
     it('sets maxTps to at least 1 when there are no rows', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
-      component.providers.set([]);
+      const { component, providersSig } = await setup({ providers: [] });
+      providersSig.set([]);
       component.searchQuery.set('');
 
       const vm = component.view();
@@ -288,8 +283,8 @@ describe('DirectoryComponent', () => {
     });
 
     it('sets maxTps from the highest tps in the filtered view', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
-      component.providers.set([
+      const { component, providersSig } = await setup({ providers: [] });
+      providersSig.set([
         provider({
           plans: [
             plan({
@@ -308,9 +303,9 @@ describe('DirectoryComponent', () => {
     });
 
     it('matches search across model, plan, provider, quantization, and usage', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component, providersSig } = await setup({ providers: [] });
       const p = provider();
-      component.providers.set([p]);
+      providersSig.set([p]);
 
       component.searchQuery.set('model x');
       expect(component.view().rowCount).toBe(1);
@@ -334,17 +329,17 @@ describe('DirectoryComponent', () => {
 
   describe('formatTtft', () => {
     it('formats sub-second as milliseconds', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component } = await setup();
       expect(component.formatTtft(0.042)).toBe('42 ms');
     });
 
     it('formats seconds with two decimals', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component } = await setup();
       expect(component.formatTtft(1.5)).toBe('1.50 s');
     });
 
     it('returns em dash for null or NaN', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component } = await setup();
       expect(component.formatTtft(null)).toBe('—');
       expect(component.formatTtft(Number.NaN)).toBe('—');
     });
@@ -352,19 +347,19 @@ describe('DirectoryComponent', () => {
 
   describe('tpsBarPercent', () => {
     it('returns 0 when maxTps is not positive', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component } = await setup();
       expect(component.tpsBarPercent(10, 0)).toBe(0);
       expect(component.tpsBarPercent(10, -1)).toBe(0);
     });
 
     it('returns rounded percentage', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component } = await setup();
       expect(component.tpsBarPercent(25, 100)).toBe(25);
       expect(component.tpsBarPercent(33, 100)).toBe(33);
     });
 
     it('is 100 when tps equals max', async () => {
-      const { component } = await setup(() => Promise.resolve([]));
+      const { component } = await setup();
       expect(component.tpsBarPercent(100, 100)).toBe(100);
     });
   });
