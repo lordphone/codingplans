@@ -53,12 +53,12 @@
             <p class="mt-0.5 text-sm text-zinc-500">Benchmarks for this model on this plan tier.</p>
           </div>
 
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2 md:items-stretch">
             <!-- Throughput (TPS) -->
             <div
-              class="rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              class="flex h-full min-h-0 flex-col rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
             >
-              <div class="mb-1 flex items-start justify-between gap-3">
+              <div class="mb-1 flex shrink-0 items-start justify-between gap-3">
                 <h3 class="text-sm font-medium text-zinc-500">Throughput</h3>
                 <span class="text-zinc-400" aria-hidden="true">
                   <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -66,10 +66,11 @@
                   </svg>
                 </span>
               </div>
-              @if (sp && sp.tps.hasData) {
-                <div class="-mx-1">
+              <p class="mb-3 min-h-8 shrink-0 text-xs leading-5 text-zinc-400">Mean daily tokens per second</p>
+              <div class="-mx-1 h-44 w-full shrink-0">
+                @if (sp && sp.tps.hasData) {
                   <svg
-                    class="h-44 w-full overflow-visible"
+                    class="h-full w-full overflow-visible"
                     viewBox="0 0 320 120"
                     preserveAspectRatio="none"
                     role="img"
@@ -98,8 +99,16 @@
                       }
                     }
                   </svg>
-                </div>
-                <div class="mt-4 flex items-center justify-between border-t border-zinc-100 pt-3 text-sm">
+                } @else {
+                  <div class="flex h-full items-center">
+                    <p class="text-sm text-zinc-400">No throughput samples in this window.</p>
+                  </div>
+                }
+              </div>
+              <div
+                class="mt-auto flex min-h-12 shrink-0 items-center justify-between border-t border-zinc-100 pt-3 text-sm"
+              >
+                @if (sp && sp.tps.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
                     <span class="h-2 w-2 shrink-0 rounded-full bg-teal-500"></span>
                     <span class="truncate">{{ model.modelName }}</span>
@@ -107,19 +116,18 @@
                   <span class="shrink-0 text-zinc-500">
                     Avg <span class="font-medium tabular-nums text-zinc-800">{{ formatAvgTokPerS(sp.tps.avgValue) }}</span>
                   </span>
-                </div>
-              } @else {
-                <div class="flex h-44 items-center">
-                  <p class="text-sm text-zinc-400">No throughput samples in this window.</p>
-                </div>
-              }
+                } @else {
+                  <span class="text-zinc-400">—</span>
+                  <span class="shrink-0 text-zinc-400">Avg —</span>
+                }
+              </div>
             </div>
 
             <!-- Latency (TTFT) -->
             <div
-              class="rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              class="flex h-full min-h-0 flex-col rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
             >
-              <div class="mb-1 flex items-start justify-between gap-3">
+              <div class="mb-1 flex shrink-0 items-start justify-between gap-3">
                 <h3 class="text-sm font-medium text-zinc-500">Latency</h3>
                 <span class="text-zinc-400" aria-hidden="true">
                   <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -127,11 +135,11 @@
                   </svg>
                 </span>
               </div>
-              <p class="mb-3 text-xs text-zinc-400">Time to first token</p>
-              @if (sp && sp.ttft.hasData) {
-                <div class="-mx-1">
+              <p class="mb-3 min-h-8 shrink-0 text-xs leading-5 text-zinc-400">Time to first token</p>
+              <div class="-mx-1 h-44 w-full shrink-0">
+                @if (sp && sp.ttft.hasData) {
                   <svg
-                    class="h-44 w-full overflow-visible"
+                    class="h-full w-full overflow-visible"
                     viewBox="0 0 320 120"
                     preserveAspectRatio="none"
                     role="img"
@@ -160,8 +168,16 @@
                       }
                     }
                   </svg>
-                </div>
-                <div class="mt-4 flex items-center justify-between border-t border-zinc-100 pt-3 text-sm">
+                } @else {
+                  <div class="flex h-full items-center">
+                    <p class="text-sm text-zinc-400">No latency samples in this window.</p>
+                  </div>
+                }
+              </div>
+              <div
+                class="mt-auto flex min-h-12 shrink-0 items-center justify-between border-t border-zinc-100 pt-3 text-sm"
+              >
+                @if (sp && sp.ttft.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
                     <span class="h-2 w-2 shrink-0 rounded-full bg-blue-500"></span>
                     <span class="truncate">{{ model.modelName }}</span>
@@ -169,12 +185,11 @@
                   <span class="shrink-0 text-zinc-500">
                     Avg <span class="font-medium tabular-nums text-zinc-800">{{ formatTtft(sp.ttft.avgValue) }}</span>
                   </span>
-                </div>
-              } @else {
-                <div class="flex h-44 items-center">
-                  <p class="text-sm text-zinc-400">No latency samples in this window.</p>
-                </div>
-              }
+                } @else {
+                  <span class="text-zinc-400">—</span>
+                  <span class="shrink-0 text-zinc-400">Avg —</span>
+                }
+              </div>
             </div>
           </div>
 
