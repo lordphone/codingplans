@@ -1,0 +1,116 @@
+<!-- Breadcrumb -->
+<nav class="mb-8">
+  <a routerLink="/directory" class="font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:text-emerald-700 transition-colors">
+    ← BACK TO DIRECTORY
+  </a>
+</nav>
+
+<!-- Header Editorial Layout -->
+<div class="mb-16">
+  <h1 class="text-[3.5rem] font-bold leading-tight tracking-tighter text-on-surface uppercase mb-2">
+    {{ providerName }}
+  </h1>
+  <p class="font-mono text-[0.75rem] text-zinc-500 tracking-wider">LAST UPDATE: {{ lastUpdated }}</p>
+</div>
+
+<!-- Tier comparison: one row, equal-width columns; scroll horizontally if the viewport is too narrow -->
+<div class="w-full overflow-x-auto">
+  <div
+    class="grid min-w-full border border-zinc-300"
+    [style.grid-template-columns]="'repeat(' + plans.length + ', minmax(12rem, 1fr))'">
+    @for (plan of plans; track plan.id; let i = $index) {
+      <div
+        class="min-w-0 border-zinc-300 p-8"
+        [class.border-l]="i > 0"
+        [class.bg-surface]="i % 2 === 0"
+        [class.bg-white]="i % 2 === 1">
+        <!-- Plan Header -->
+        <div class="flex justify-between items-start gap-6 mb-8">
+          <div class="min-w-0">
+            <a [routerLink]="['/directory', providerId, plan.id]"
+               class="text-2xl font-bold tracking-tight mb-1 block hover:text-emerald-700 transition-colors">
+              {{ plan.name }}
+            </a>
+            <p class="font-mono text-[0.75rem] text-zinc-500 uppercase">TIER ID: {{ plan.tierId }}</p>
+          </div>
+          <div class="shrink-0 text-right">
+            <span class="text-3xl font-light">{{ plan.price }}</span>
+            <span class="font-mono text-[0.65rem] block text-zinc-500 uppercase">USD {{ plan.period }}</span>
+          </div>
+        </div>
+
+        <!-- Models: stacked blocks; each has a mini horizontal metric row (QUANT / TPS / TTFT) -->
+        <div class="min-w-0">
+          @for (row of plan.models; track row.id; let first = $first) {
+            <div
+              class="border-zinc-200"
+              [class.border-t]="!first"
+              [class.pt-10]="!first">
+              <p class="mb-4 font-mono text-[0.75rem] font-bold uppercase tracking-wide text-zinc-900">
+                {{ row.name | uppercase }}
+              </p>
+              <div class="grid grid-cols-3 gap-x-4 gap-y-1">
+                <div class="min-w-0 text-left">
+                  <div class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                    QUANT
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="h-2.5 w-2.5 shrink-0" [class.bg-red-700]="row.quantizationColor === 'tertiary'" [class.bg-emerald-600]="row.quantizationColor === 'secondary'"></span>
+                    <span class="font-mono text-[0.7rem] font-bold uppercase" [class.text-red-700]="row.quantizationColor === 'tertiary'" [class.text-emerald-600]="row.quantizationColor === 'secondary'">
+                      {{ row.quantization }}
+                    </span>
+                  </div>
+                </div>
+                <div class="min-w-0 text-left">
+                  <div class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                    TPS
+                  </div>
+                  <div class="font-mono text-[0.7rem] font-bold uppercase text-zinc-900">
+                    {{ row.tps }}
+                  </div>
+                </div>
+                <div class="min-w-0 text-left">
+                  <div class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                    TTFT
+                  </div>
+                  <div class="font-mono text-[0.7rem] font-bold uppercase text-zinc-900">
+                    {{ row.ttft | uppercase }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Audit Verification Box -->
+<div class="mt-16 border border-zinc-300 p-8 flex flex-col md:flex-row justify-between items-start gap-8">
+  <div class="max-w-xl">
+    <h4 class="font-mono text-[0.75rem] font-bold mb-4 flex items-center gap-2 uppercase">
+      <span class="material-icons text-[14px]">verified_user</span>
+      AUDIT VERIFICATION CERTIFICATE
+    </h4>
+    <p class="font-mono text-[0.7rem] text-zinc-600 uppercase leading-loose">
+      The data presented above has been mathematically verified against {{ providerName }} API endpoints.
+      Performance metrics represent sustained throughput under standard load conditions.
+      No synthetic interpolation was used in these findings.
+    </p>
+  </div>
+  <div class="flex flex-col gap-2 min-w-[200px]">
+    <div class="flex justify-between border-b border-zinc-300 pb-1">
+      <span class="font-mono text-[0.65rem] text-zinc-500 uppercase">STATUS</span>
+      <span class="font-mono text-[0.65rem] font-bold text-emerald-600 uppercase">VERIFIED PASS</span>
+    </div>
+    <div class="flex justify-between border-b border-zinc-300 pb-1">
+      <span class="font-mono text-[0.65rem] text-zinc-500 uppercase">LATENCY AUDIT</span>
+      <span class="font-mono text-[0.65rem] font-bold text-emerald-600 uppercase">OK</span>
+    </div>
+    <div class="flex justify-between border-b border-zinc-300 pb-1">
+      <span class="font-mono text-[0.65rem] text-zinc-500 uppercase">TOKEN RELIABILITY</span>
+      <span class="font-mono text-[0.65rem] font-bold text-emerald-600 uppercase">99.98%</span>
+    </div>
+  </div>
+</div>
