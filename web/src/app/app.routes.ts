@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { LayoutComponent } from './components/layout/layout.component';
 import { DirectoryComponent } from './pages/directory/directory.component';
 import { ProviderDetailComponent } from './pages/provider-detail/provider-detail.component';
+import { PlanDetailComponent } from './pages/plan-detail/plan-detail.component';
 
 export const routes: Routes = [
   {
@@ -23,7 +24,7 @@ export const routes: Routes = [
       },
       {
         path: 'directory/:providerId/:planId',
-        component: ProviderDetailComponent
+        component: PlanDetailComponent
       },
       {
         path: 'benchmarks',
