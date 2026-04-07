@@ -31,9 +31,9 @@ interface PlanDetail {
     <!-- Header Editorial Layout -->
     <div class="mb-16">
       <h1 class="text-[3.5rem] font-bold leading-tight tracking-tighter text-on-surface uppercase mb-2">
-        Audit Report:<br/>{{ providerName }}
+        {{ providerName }}
       </h1>
-      <p class="font-mono text-[0.75rem] text-zinc-500 tracking-wider">TIMESTAMP: {{ timestamp }}</p>
+      <p class="font-mono text-[0.75rem] text-zinc-500 tracking-wider">LAST UPDATE: {{ lastUpdated }}</p>
     </div>
 
     <!-- Tier Comparison Grid -->
@@ -125,7 +125,7 @@ export class ProviderComponent {
   @Input() providerId: string = '';
 
   providerName = 'Alibaba Cloud';
-  timestamp = '2024-10-24 14:30:01 UTC';
+  lastUpdated = '2024-10-24 14:30:01 UTC';
 
   plans: PlanDetail[] = [
     {
