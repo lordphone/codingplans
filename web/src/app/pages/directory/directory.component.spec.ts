@@ -16,6 +16,7 @@ async function flushDirectoryLoad(fixture: { detectChanges: () => void; whenStab
 function row(overrides: Partial<DirectoryModelRow> = {}): DirectoryModelRow {
   return {
     rowId: 'plan-a:model-x',
+    modelId: '00000000-0000-4000-8000-000000000001',
     modelSlug: 'model-x',
     modelName: 'Model X',
     usageLabel: '—',
@@ -66,6 +67,7 @@ describe('DirectoryComponent', () => {
             modelRows: [
               {
                 rowId: 'basic:gpt',
+                modelId: '00000000-0000-4000-8000-000000000002',
                 modelSlug: 'gpt',
                 modelName: 'GPT-Test',
                 usageLabel: '—',

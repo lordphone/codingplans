@@ -9,6 +9,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { DirectorySnapshotService } from '../../services/directory-snapshot.service';
 import { SupabaseService } from '../../services/supabase.service';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
 
@@ -80,6 +81,7 @@ function computeTpsBarPercent(tps: number, maxTps: number): number {
 })
 export class DirectoryComponent implements OnInit {
   private readonly supabase = inject(SupabaseService);
+  private readonly directorySnapshot = inject(DirectorySnapshotService);
 
   /** Shared `<th>` classes (bordered columns vs last column). */
   readonly tableHeadCellClass =
@@ -109,6 +111,7 @@ export class DirectoryComponent implements OnInit {
     try {
       const data = await this.supabase.fetchDirectoryFromSupabase();
       this.providers.set(data);
+      this.directorySnapshot.setProviders(data);
     } catch (e) {
       console.error('Directory load failed', e);
       const message =
@@ -117,6 +120,7 @@ export class DirectoryComponent implements OnInit {
           : 'Could not load directory from Supabase.';
       this.loadError.set(message);
       this.providers.set([]);
+      this.directorySnapshot.setProviders([]);
     } finally {
       this.loading.set(false);
     }

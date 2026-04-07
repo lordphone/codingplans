@@ -352,6 +352,7 @@ function mapOnePlan(
 
     const modelRowBase = {
       rowId: `${plan.slug}:${model.slug}`,
+      modelId: model.id,
       modelSlug: model.slug,
       modelName: model.name,
       usageLabel: USAGE_PLACEHOLDER,

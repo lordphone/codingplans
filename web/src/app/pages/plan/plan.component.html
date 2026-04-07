@@ -4,7 +4,7 @@
   <p class="mb-8 border border-red-200 bg-red-50 px-4 py-3 font-mono text-sm text-red-800" role="alert">
     {{ loadError() }}
   </p>
-} @else if (loading()) {
+} @else if (loading() && !page()) {
   <p class="mb-8 font-mono text-sm text-zinc-500">Loading plan metrics…</p>
 } @else if (notFound()) {
   <p class="mb-8 font-mono text-sm text-zinc-600">No plan matches this URL.</p>
@@ -73,6 +73,10 @@
             </h2>
             <p class="mt-0.5 text-sm text-zinc-500">Benchmarks for this model on this plan tier.</p>
           </div>
+
+          @if (detailLoading()) {
+            <p class="text-sm text-zinc-500">Loading chart data…</p>
+          }
 
           <div class="overflow-hidden border border-zinc-200 bg-white shadow-sm md:grid md:grid-cols-2 md:items-stretch md:gap-px md:bg-zinc-300">
             <!-- Throughput (TPS) -->

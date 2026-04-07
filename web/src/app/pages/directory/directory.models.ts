@@ -4,6 +4,8 @@ export type QuantizationStatus = 'scam' | 'verified' | 'untested';
 /** One grid row: one model on a plan. */
 export interface DirectoryModelRow {
   rowId: string;
+  /** DB `models.id` (UUID); used when hydrating plan metrics from directory snapshot. */
+  modelId: string;
   /** Route segment; same as DB `models.slug`. */
   modelSlug: string;
   modelName: string;
