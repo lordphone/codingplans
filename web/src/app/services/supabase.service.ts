@@ -352,6 +352,7 @@ function mapOnePlan(
 
     const modelRowBase = {
       rowId: `${plan.slug}:${model.slug}`,
+      modelSlug: model.slug,
       modelName: model.name,
       usageLabel: USAGE_PLACEHOLDER,
       tps: stats?.avgTps != null ? Math.round(stats.avgTps) : 0,

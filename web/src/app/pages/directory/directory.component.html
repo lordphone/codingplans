@@ -77,7 +77,10 @@
                         [attr.rowspan]="plan.modelRows.length"
                         class="align-middle border-r border-zinc-200 bg-zinc-50/80 px-4 py-4"
                       >
-                        <a [routerLink]="['/directory', provider.id, plan.id]" class="font-bold text-sm leading-snug tracking-tight text-zinc-900 hover:text-emerald-700 transition-colors">
+                        <a
+                          [routerLink]="['/directory', provider.id, plan.id, plan.modelRows[0].modelSlug]"
+                          class="font-bold text-sm leading-snug tracking-tight text-zinc-900 hover:text-emerald-700 transition-colors"
+                        >
                           {{ plan.name }}
                         </a>
                         @if (plan.subtitle) {
@@ -85,8 +88,13 @@
                         }
                       </td>
                     }
-                    <td class="border-r border-zinc-200 px-4 py-3.5 font-mono text-xs leading-snug text-zinc-800 align-middle">
-                      {{ modelRow.modelName }}
+                    <td class="border-r border-zinc-200 px-4 py-3.5 font-mono text-xs leading-snug align-middle">
+                      <a
+                        [routerLink]="['/directory', provider.id, plan.id, modelRow.modelSlug]"
+                        class="text-zinc-800 hover:text-emerald-700 transition-colors"
+                      >
+                        {{ modelRow.modelName }}
+                      </a>
                     </td>
                     <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">
                       <div class="flex min-h-[2.75rem] flex-col justify-center gap-1">

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
 import { SupabaseService } from '../../services/supabase.service';
 import type { PlanPerformanceDayPoint, PlanPerformancePage } from './plan.models';
@@ -157,6 +157,7 @@ function buildMetricSparkline(
 })
 export class PlanComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly supabase = inject(SupabaseService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -200,9 +201,10 @@ export class PlanComponent {
       .pipe(
         map(params => ({
           providerSlug: params.get('providerId') ?? '',
-          planSlug: params.get('planId') ?? ''
+          planSlug: params.get('planId') ?? '',
+          modelSlug: (params.get('modelSlug') ?? '').trim()
         })),
-        switchMap(({ providerSlug, planSlug }) => {
+        switchMap(({ providerSlug, planSlug, modelSlug }) => {
           if (!providerSlug || !planSlug) {
             this.missingParams.set(true);
             this.notFound.set(false);
@@ -215,6 +217,7 @@ export class PlanComponent {
           this.loading.set(true);
           this.loadError.set(null);
           return from(this.supabase.fetchPlanPerformancePage(providerSlug, planSlug)).pipe(
+            map(data => ({ data, modelSlug } as const)),
             catchError(err => {
               console.error('Plan page load failed', err);
               const message =
@@ -231,21 +234,48 @@ export class PlanComponent {
         }),
         takeUntilDestroyed(this.destroyRef)
       )
-      .subscribe(data => {
+      .subscribe(({ data, modelSlug }) => {
         this.loading.set(false);
         if (data === null) {
           this.notFound.set(true);
           this.page.set(null);
-        } else {
-          this.notFound.set(false);
-          this.page.set(data);
-          this.selectedModelIndex.set(0);
+          return;
         }
+        this.notFound.set(false);
+        this.page.set(data);
+        this.syncModelSelectionWithUrl(modelSlug, data);
       });
   }
 
+  /**
+   * Canonical URLs include `modelSlug`. Three-segment `/directory/:provider/:plan` redirects to the first model.
+   */
+  private syncModelSelectionWithUrl(modelSlug: string, page: PlanPerformancePage): void {
+    if (page.models.length === 0) {
+      return;
+    }
+    if (!modelSlug) {
+      const first = page.models[0].modelSlug;
+      void this.router.navigate(['/directory', page.providerSlug, page.planSlug, first], { replaceUrl: true });
+      return;
+    }
+    const idx = page.models.findIndex(m => m.modelSlug === modelSlug);
+    if (idx === -1) {
+      void this.router.navigate(['/directory', page.providerSlug, page.planSlug, page.models[0].modelSlug], {
+        replaceUrl: true
+      });
+      return;
+    }
+    this.selectedModelIndex.set(idx);
+  }
+
   selectModelTab(index: number): void {
-    this.selectedModelIndex.set(index);
+    const p = this.page();
+    if (!p || index < 0 || index >= p.models.length) {
+      return;
+    }
+    const m = p.models[index];
+    void this.router.navigate(['/directory', p.providerSlug, p.planSlug, m.modelSlug], { replaceUrl: true });
   }
 
   sparkFor(modelId: string): { tps: MetricSparklineGeom; ttft: MetricSparklineGeom } | undefined {

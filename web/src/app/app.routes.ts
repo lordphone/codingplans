@@ -23,6 +23,10 @@ export const routes: Routes = [
         component: ProviderDetailComponent
       },
       {
+        path: 'directory/:providerId/:planId/:modelSlug',
+        component: PlanComponent
+      },
+      {
         path: 'directory/:providerId/:planId',
         component: PlanComponent
       },

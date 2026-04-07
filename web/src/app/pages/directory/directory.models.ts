@@ -4,6 +4,8 @@ export type QuantizationStatus = 'scam' | 'verified' | 'untested';
 /** One grid row: one model on a plan. */
 export interface DirectoryModelRow {
   rowId: string;
+  /** Route segment; same as DB `models.slug`. */
+  modelSlug: string;
   modelName: string;
   /** Placeholder; DB `plan_models.usage_limit` not shown in UI for now. */
   usageLabel: string;

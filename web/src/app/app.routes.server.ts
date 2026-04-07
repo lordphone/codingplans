@@ -14,6 +14,10 @@ export const serverRoutes: ServerRoute[] = [
     renderMode: RenderMode.Server
   },
   {
+    path: 'directory/:providerId/:planId/:modelSlug',
+    renderMode: RenderMode.Server
+  },
+  {
     path: 'directory/:providerId/:planId',
     renderMode: RenderMode.Server
   },
