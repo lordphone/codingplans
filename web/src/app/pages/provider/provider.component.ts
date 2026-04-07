@@ -17,7 +17,7 @@ interface PlanDetail {
 }
 
 @Component({
-  selector: 'app-provider-detail',
+  selector: 'app-provider',
   standalone: true,
   imports: [CommonModule, RouterLink],
   template: `
@@ -121,12 +121,12 @@ interface PlanDetail {
     </div>
   `
 })
-export class ProviderDetailComponent {
+export class ProviderComponent {
   @Input() providerId: string = '';
-  
+
   providerName = 'Alibaba Cloud';
   timestamp = '2024-10-24 14:30:01 UTC';
-  
+
   plans: PlanDetail[] = [
     {
       id: 'lite',

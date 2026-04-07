@@ -62,7 +62,7 @@ Use `benchmarks/providers.example.json` as a template; real `providers.json` is 
         │   ├── components/layout/     # shell: top nav + router-outlet
         │   ├── pages/
         │   │   ├── directory/       # Supabase-backed comparison table
-        │   │   ├── provider-detail/ # mock / static for now
+        │   │   ├── provider/ # mock / static for now
         │   │   ├── benchmarks/
         │   │   └── models/
         │   ├── services/supabase.service.ts
@@ -142,7 +142,7 @@ When writing benchmark rows, resolve API model name → `models.id`.
 |------|---------|
 | `/` | Redirects to `/directory` |
 | `/directory` | Comparison table + search |
-| `/directory/:providerId` | Provider detail (`ProviderDetailComponent`) |
+| `/directory/:providerId` | Provider page (`ProviderComponent`) |
 | `/directory/:providerId/:planId` | Same component; optional plan segment |
 | `/benchmarks` | Placeholder |
 | `/models` | Placeholder (not in main nav) |
@@ -152,4 +152,4 @@ When writing benchmark rows, resolve API model name → `models.id`.
 - `/directory/alibaba-cloud-model-studio-coding-plan`
 - `/directory/alibaba-cloud-model-studio-coding-plan/lite`
 
-**Provider detail** is still mostly **static/mock** in `provider-detail.component.ts`; loading real provider/plan data from Supabase is follow-up work.
+**Provider page** is still mostly **static/mock** in `provider.component.ts`; loading real provider/plan data from Supabase is follow-up work.
