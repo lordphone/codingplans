@@ -2,6 +2,12 @@ import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../environments/environment';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from '../pages/directory/directory.models';
+import type {
+  PlanPerformanceDayPoint,
+  PlanPerformanceModelBlock,
+  PlanPerformancePage,
+  PlanQuantRunRow
+} from '../pages/plan/plan.models';
 import type { BenchmarkRun, ProviderWithPlansAndModels } from '../types/database.types';
 
 const DIRECTORY_PROVIDER_SELECT = `
@@ -98,6 +104,92 @@ export class SupabaseService {
     return mapProvidersToDirectory(providers, statsByPlanModel, latestQuantByPlanModel);
   }
 
+  /**
+   * Plan page: one plan (by provider + plan slug), models on that plan, and benchmark runs from the last
+   * {@link PLAN_PAGE_BENCHMARK_DAYS} days (daily buckets for TPS / TTFT; quantization rows are individual runs).
+   */
+  async fetchPlanPerformancePage(providerSlug: string, planSlug: string): Promise<PlanPerformancePage | null> {
+    const { data: provider, error: providerError } = await this.supabase
+      .from('providers')
+      .select('id, name, slug')
+      .eq('slug', providerSlug)
+      .maybeSingle();
+
+    if (providerError) {
+      throw providerError;
+    }
+    if (!provider) {
+      return null;
+    }
+
+    const { data: planRaw, error: planError } = await this.supabase
+      .from('plans')
+      .select(
+        `id, name, slug, description, price_per_month, currency, is_active,
+         plan_models ( model_id, models ( id, name, slug ) )`
+      )
+      .eq('provider_id', provider.id)
+      .eq('slug', planSlug)
+      .maybeSingle();
+
+    if (planError) {
+      throw planError;
+    }
+
+    const planRow = planRaw as PlanWithModelsEmbed | null;
+    if (!planRow || !planRow.is_active) {
+      return null;
+    }
+
+    const junctions = [...(planRow.plan_models ?? [])]
+      .filter((pm): pm is PlanModelJunction => Boolean(pm.models?.slug))
+      .sort((a, b) => (a.models.name ?? '').localeCompare(b.models.name ?? ''));
+
+    const baseMeta = {
+      providerName: provider.name,
+      providerSlug: provider.slug,
+      planName: planRow.name,
+      planSlug: planRow.slug,
+      planSubtitle: planRow.description?.trim() ?? '',
+      priceLabel: formatMonthlyPrice(planRow.price_per_month, planRow.currency),
+      periodLabel: '/ month'
+    };
+
+    if (junctions.length === 0) {
+      return { ...baseMeta, models: [] };
+    }
+
+    const sinceIso = rollingWindowStartUtcIso(PLAN_PAGE_BENCHMARK_DAYS);
+    const { data: runRows, error: runsError } = await this.supabase
+      .from('benchmark_runs')
+      .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
+      .eq('plan_id', planRow.id)
+      .gte('run_at', sinceIso)
+      .order('run_at', { ascending: true });
+
+    if (runsError) {
+      throw runsError;
+    }
+
+    const runs = (runRows ?? []) as BenchmarkRun[];
+    const dayMeta = lastNDayKeysUtc(PLAN_PAGE_BENCHMARK_DAYS);
+
+    const models: PlanPerformanceModelBlock[] = junctions.map(pm => {
+      const series = buildDaySeriesForModel(pm.model_id, runs, dayMeta);
+      const quantRuns = buildQuantRunsForModel(pm.model_id, runs);
+      return {
+        modelId: pm.model_id,
+        modelName: pm.models.name,
+        modelSlug: pm.models.slug,
+        tpsSeries: series,
+        ttftSeries: series,
+        quantRuns
+      };
+    });
+
+    return { ...baseMeta, models };
+  }
+
   async getData(table: string) {
     const { data, error } = await this.supabase.from(table).select('*');
     if (error) throw error;
@@ -113,6 +205,25 @@ export class SupabaseService {
 
 /** How far back to include runs when computing directory performance averages (Option A: aggregate in app). */
 const BENCHMARK_ROLLING_DAYS = 7;
+
+/** Plan page charts: UTC daily buckets over this many days. */
+const PLAN_PAGE_BENCHMARK_DAYS = 30;
+
+interface PlanModelJunction {
+  model_id: string;
+  models: { id: string; name: string; slug: string };
+}
+
+interface PlanWithModelsEmbed {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  price_per_month: number | null;
+  currency: string;
+  is_active: boolean;
+  plan_models: PlanModelJunction[] | null;
+}
 
 /** Rolling-window averages for one (plan_id, model_id); quantization is loaded separately. */
 interface PlanModelBenchmarkStats {
@@ -257,7 +368,7 @@ function mapOnePlan(
       modelRows.push({
         ...modelRowBase,
         quantization: latestQ,
-        quantizationStatus: inferQuantizationStatus(latestQ)
+        quantizationStatus: inferQuantizationStatusFromLabel(latestQ)
       });
     }
   }
@@ -278,8 +389,11 @@ function mapOnePlan(
 
 const USAGE_PLACEHOLDER = '—';
 
-/** Low-bit integer weights (INT4/INT8, etc.) — flag like provider-detail “aggressive” tiers (red, not FP16-green). */
-function inferQuantizationStatus(quantization: string): 'scam' | 'verified' {
+/**
+ * Low-bit integer weights (INT4/INT8, etc.) — flag like provider-detail “aggressive” tiers (red, not FP16-green).
+ * Shared with plan page quantization timeline.
+ */
+export function inferQuantizationStatusFromLabel(quantization: string): 'scam' | 'verified' {
   const q = quantization.toLowerCase();
   if (q.includes('scam') || /\breset\b/.test(q)) {
     return 'scam';
@@ -288,6 +402,90 @@ function inferQuantizationStatus(quantization: string): 'scam' | 'verified' {
     return 'scam';
   }
   return 'verified';
+}
+
+function utcDayKeyFromIso(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
+function lastNDayKeysUtc(n: number): { key: string; label: string }[] {
+  const out: { key: string; label: string }[] = [];
+  for (let back = n - 1; back >= 0; back--) {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() - back);
+    const key = utcDayKeyFromIso(d.toISOString());
+    const label = `${d.getUTCMonth() + 1}/${String(d.getUTCDate()).padStart(2, '0')}`;
+    out.push({ key, label });
+  }
+  return out;
+}
+
+function buildDaySeriesForModel(
+  modelId: string,
+  runs: BenchmarkRun[],
+  dayMeta: { key: string; label: string }[]
+): PlanPerformanceDayPoint[] {
+  const byDay = new Map<string, { tps: number[]; ttft: number[] }>();
+  for (const { key } of dayMeta) {
+    byDay.set(key, { tps: [], ttft: [] });
+  }
+  for (const r of runs) {
+    if (r.model_id !== modelId) {
+      continue;
+    }
+    const dk = utcDayKeyFromIso(r.run_at);
+    const bucket = byDay.get(dk);
+    if (!bucket) {
+      continue;
+    }
+    if (r.tps != null && !Number.isNaN(Number(r.tps))) {
+      bucket.tps.push(Number(r.tps));
+    }
+    if (r.ttft_s != null && !Number.isNaN(Number(r.ttft_s))) {
+      bucket.ttft.push(Number(r.ttft_s));
+    }
+  }
+  return dayMeta.map(({ key, label }) => {
+    const b = byDay.get(key)!;
+    const avgTps = b.tps.length > 0 ? b.tps.reduce((s, x) => s + x, 0) / b.tps.length : null;
+    const avgTtftS = b.ttft.length > 0 ? b.ttft.reduce((s, x) => s + x, 0) / b.ttft.length : null;
+    return { dayKey: key, label, avgTps, avgTtftS };
+  });
+}
+
+function buildQuantRunsForModel(modelId: string, runs: BenchmarkRun[]): PlanQuantRunRow[] {
+  const rows: PlanQuantRunRow[] = [];
+  for (const r of runs) {
+    if (r.model_id !== modelId) {
+      continue;
+    }
+    const q = typeof r.quantization === 'string' ? r.quantization.trim() : '';
+    if (!q) {
+      continue;
+    }
+    const { dayLabel, timeLabel } = formatRunDayTimeUtc(r.run_at);
+    rows.push({
+      runAtIso: r.run_at,
+      dayLabel,
+      timeLabel,
+      label: q,
+      status: inferQuantizationStatusFromLabel(q)
+    });
+  }
+  rows.sort((a, b) => b.runAtIso.localeCompare(a.runAtIso));
+  return rows;
+}
+
+function formatRunDayTimeUtc(iso: string): { dayLabel: string; timeLabel: string } {
+  const d = new Date(iso);
+  const dayLabel = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  const timeLabel = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
+  return { dayLabel, timeLabel };
 }
 
 function formatMonthlyPrice(amount: number | null, currency: string): string {

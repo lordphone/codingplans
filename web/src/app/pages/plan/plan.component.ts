@@ -1,42 +1,134 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { RouterLink, ActivatedRoute } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs/operators';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
+import { SupabaseService } from '../../services/supabase.service';
+import type { PlanPerformanceModelBlock, PlanPerformancePage } from './plan.models';
+import { buildMetricSparkline, type MetricSparklineGeom } from './plan-sparkline';
+
+const WINDOW_DAYS = 30;
 
 @Component({
   selector: 'app-plan',
   standalone: true,
   imports: [CommonModule, RouterLink],
-  template: `
-    <nav class="mb-8 flex flex-wrap gap-x-4 gap-y-2 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-      <a routerLink="/directory" class="hover:text-emerald-700 transition-colors">Directory</a>
-      <span aria-hidden="true">/</span>
-      <a [routerLink]="['/directory', providerId()]" class="hover:text-emerald-700 transition-colors">
-        {{ providerId() || '…' }}
-      </a>
-    </nav>
-
-    <header class="mb-16 space-y-2">
-      <h1 class="text-[3.5rem] font-extrabold tracking-tighter leading-none uppercase">Plan</h1>
-      <p class="font-mono text-[0.75rem] text-zinc-500 tracking-widest uppercase">
-        {{ planId() || '…' }} — coming soon
-      </p>
-    </header>
-
-    <p class="font-mono text-sm text-zinc-600 max-w-prose">
-      This page will show models, pricing, and benchmarks for this tier. For now, use the provider audit report for a
-      side-by-side comparison.
-    </p>
-  `
+  templateUrl: './plan.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PlanComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly supabase = inject(SupabaseService);
 
-  readonly providerId = toSignal(
-    this.route.paramMap.pipe(map(p => p.get('providerId') ?? '')),
-    { initialValue: '' }
-  );
+  readonly windowDays = WINDOW_DAYS;
 
-  readonly planId = toSignal(this.route.paramMap.pipe(map(p => p.get('planId') ?? '')), { initialValue: '' });
+  readonly loading = signal(true);
+  readonly loadError = signal<string | null>(null);
+  readonly missingParams = signal(false);
+  readonly notFound = signal(false);
+  readonly page = signal<PlanPerformancePage | null>(null);
+
+  readonly sparklinesByModel = computed(() => {
+    const p = this.page();
+    const mapById = new Map<string, { tps: MetricSparklineGeom; ttft: MetricSparklineGeom }>();
+    if (!p) {
+      return mapById;
+    }
+    for (const m of p.models) {
+      mapById.set(m.modelId, {
+        tps: buildMetricSparkline(m.tpsSeries, 'avgTps'),
+        ttft: buildMetricSparkline(m.ttftSeries, 'avgTtftS')
+      });
+    }
+    return mapById;
+  });
+
+  constructor() {
+    this.route.paramMap
+      .pipe(
+        map(params => ({
+          providerSlug: params.get('providerId') ?? '',
+          planSlug: params.get('planId') ?? ''
+        })),
+        switchMap(({ providerSlug, planSlug }) => {
+          if (!providerSlug || !planSlug) {
+            this.missingParams.set(true);
+            this.notFound.set(false);
+            this.page.set(null);
+            this.loading.set(false);
+            this.loadError.set(null);
+            return EMPTY;
+          }
+          this.missingParams.set(false);
+          this.loading.set(true);
+          this.loadError.set(null);
+          return from(this.supabase.fetchPlanPerformancePage(providerSlug, planSlug)).pipe(
+            catchError(err => {
+              console.error('Plan page load failed', err);
+              const message =
+                err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
+                  ? (err as { message: string }).message
+                  : 'Could not load plan from Supabase.';
+              this.loadError.set(message);
+              this.page.set(null);
+              this.notFound.set(false);
+              this.loading.set(false);
+              return EMPTY;
+            })
+          );
+        }),
+        takeUntilDestroyed()
+      )
+      .subscribe(data => {
+        this.loading.set(false);
+        if (data === null) {
+          this.notFound.set(true);
+          this.page.set(null);
+        } else {
+          this.notFound.set(false);
+          this.page.set(data);
+        }
+      });
+  }
+
+  sparkFor(modelId: string): { tps: MetricSparklineGeom; ttft: MetricSparklineGeom } | undefined {
+    return this.sparklinesByModel().get(modelId);
+  }
+
+  axisLabels(series: PlanPerformanceModelBlock['tpsSeries']): { start: string; mid: string; end: string } {
+    const n = series.length;
+    if (n === 0) {
+      return { start: '', mid: '', end: '' };
+    }
+    return {
+      start: series[0].label,
+      mid: series[Math.floor(n / 2)].label,
+      end: series[n - 1].label
+    };
+  }
+
+  formatTpsAxis(v: number | null): string {
+    if (v == null || Number.isNaN(v)) {
+      return '—';
+    }
+    return `${Math.round(v)}`;
+  }
+
+  formatTtft(seconds: number | null): string {
+    if (seconds == null || Number.isNaN(seconds)) {
+      return '—';
+    }
+    if (seconds < 1) {
+      return `${Math.round(seconds * 1000)} ms`;
+    }
+    return `${seconds.toFixed(2)} s`;
+  }
+
+  showsQuantizationLossNotice(label: string, status: 'scam' | 'verified'): boolean {
+    if (status !== 'scam') {
+      return false;
+    }
+    const q = label.toLowerCase();
+    return q.includes('scam') || /\breset\b/.test(q);
+  }
 }
