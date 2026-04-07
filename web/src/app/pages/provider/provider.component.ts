@@ -13,7 +13,6 @@ interface PlanDetail {
   quantizationColor: 'tertiary' | 'secondary';
   tps: string;
   notice?: string;
-  isPro: boolean;
 }
 
 @Component({
@@ -36,10 +35,17 @@ interface PlanDetail {
       <p class="font-mono text-[0.75rem] text-zinc-500 tracking-wider">LAST UPDATE: {{ lastUpdated }}</p>
     </div>
 
-    <!-- Tier Comparison Grid -->
-    <div class="grid grid-cols-2 gap-px bg-zinc-300">
-      @for (plan of plans; track plan.id) {
-        <div class="p-8" [class.bg-surface]="!plan.isPro" [class.bg-white]="plan.isPro">
+    <!-- Tier comparison: one row, equal-width columns; scroll horizontally if the viewport is too narrow -->
+    <div class="w-full overflow-x-auto">
+      <div
+        class="grid min-w-full border border-zinc-300"
+        [style.grid-template-columns]="'repeat(' + plans.length + ', minmax(12rem, 1fr))'">
+      @for (plan of plans; track plan.id; let i = $index) {
+        <div
+          class="min-w-0 border-zinc-300 p-8"
+          [class.border-l]="i > 0"
+          [class.bg-surface]="i % 2 === 0"
+          [class.bg-white]="i % 2 === 1">
           <!-- Plan Header -->
           <div class="flex justify-between items-start mb-12">
             <div>
@@ -81,7 +87,7 @@ interface PlanDetail {
             </section>
 
             <!-- Notice Box -->
-            <div class="p-4" [class.bg-zinc-100]="!plan.isPro" [class.bg-white.border.border-zinc-300]="plan.isPro">
+            <div class="p-4" [class.bg-zinc-100]="i % 2 === 0" [class.bg-white.border.border-zinc-300]="i % 2 === 1">
               <p class="font-mono text-[0.7rem] text-zinc-600 uppercase leading-relaxed">
                 {{ plan.notice }}
               </p>
@@ -89,6 +95,7 @@ interface PlanDetail {
           </div>
         </div>
       }
+      </div>
     </div>
 
     <!-- Audit Verification Box -->
@@ -138,8 +145,19 @@ export class ProviderComponent {
       quantization: 'INT4',
       quantizationColor: 'tertiary',
       tps: '18.5',
-      notice: 'NOTICE: LITE tier implements aggressive quantization to maintain cost efficiency. Expect precision degradation in complex reasoning tasks.',
-      isPro: false
+      notice: 'NOTICE: LITE tier implements aggressive quantization to maintain cost efficiency. Expect precision degradation in complex reasoning tasks.'
+    },
+    {
+      id: 'standard',
+      name: 'STANDARD (TEST)',
+      tierId: 'ACMS STD 200',
+      price: '$25',
+      period: '/ MO',
+      modelTarget: 'KIMI 8B INSTRUCT',
+      quantization: 'INT8',
+      quantizationColor: 'tertiary',
+      tps: '52.0',
+      notice: 'TEST TIER: Placeholder middle plan to verify single-row layout with three columns.'
     },
     {
       id: 'pro',
@@ -151,8 +169,7 @@ export class ProviderComponent {
       quantization: 'FP16',
       quantizationColor: 'secondary',
       tps: '142.0',
-      notice: 'TECHNICAL SUMMARY: PRO tier provides full precision floating point support and significantly higher throughput limits for production-ready reliability.',
-      isPro: true
+      notice: 'TECHNICAL SUMMARY: PRO tier provides full precision floating point support and significantly higher throughput limits for production-ready reliability.'
     }
   ];
 }
