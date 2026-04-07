@@ -214,6 +214,19 @@ export class PlanComponent {
             return EMPTY;
           }
           this.missingParams.set(false);
+
+          const cached = this.page();
+          if (
+            cached &&
+            cached.providerSlug === providerSlug &&
+            cached.planSlug === planSlug
+          ) {
+            this.loading.set(false);
+            this.loadError.set(null);
+            this.syncModelSelectionWithUrl(modelSlug, cached);
+            return EMPTY;
+          }
+
           this.loading.set(true);
           this.loadError.set(null);
           return from(this.supabase.fetchPlanPerformancePage(providerSlug, planSlug)).pipe(
