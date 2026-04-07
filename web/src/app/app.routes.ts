@@ -2,7 +2,7 @@ import { Routes } from '@angular/router';
 import { LayoutComponent } from './components/layout/layout.component';
 import { DirectoryComponent } from './pages/directory/directory.component';
 import { ProviderDetailComponent } from './pages/provider-detail/provider-detail.component';
-import { PlanDetailComponent } from './pages/plan-detail/plan-detail.component';
+import { PlanComponent } from './pages/plan/plan.component';
 
 export const routes: Routes = [
   {
@@ -24,7 +24,7 @@ export const routes: Routes = [
       },
       {
         path: 'directory/:providerId/:planId',
-        component: PlanDetailComponent
+        component: PlanComponent
       },
       {
         path: 'benchmarks',

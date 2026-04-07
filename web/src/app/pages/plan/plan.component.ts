@@ -5,7 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 
 @Component({
-  selector: 'app-plan-detail',
+  selector: 'app-plan',
   standalone: true,
   imports: [CommonModule, RouterLink],
   template: `
@@ -20,7 +20,7 @@ import { map } from 'rxjs/operators';
     <header class="mb-16 space-y-2">
       <h1 class="text-[3.5rem] font-extrabold tracking-tighter leading-none uppercase">Plan</h1>
       <p class="font-mono text-[0.75rem] text-zinc-500 tracking-widest uppercase">
-        {{ planId() || '…' }} — detail view coming soon
+        {{ planId() || '…' }} — coming soon
       </p>
     </header>
 
@@ -30,7 +30,7 @@ import { map } from 'rxjs/operators';
     </p>
   `
 })
-export class PlanDetailComponent {
+export class PlanComponent {
   private readonly route = inject(ActivatedRoute);
 
   readonly providerId = toSignal(
