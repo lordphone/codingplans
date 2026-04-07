@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -19,6 +19,7 @@ const WINDOW_DAYS = 30;
 export class PlanComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly supabase = inject(SupabaseService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly windowDays = WINDOW_DAYS;
 
@@ -77,7 +78,7 @@ export class PlanComponent {
             })
           );
         }),
-        takeUntilDestroyed()
+        takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(data => {
         this.loading.set(false);
