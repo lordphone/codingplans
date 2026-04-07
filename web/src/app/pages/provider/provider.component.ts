@@ -1,26 +1,9 @@
-import { Component, Input } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
-
-/** One model block inside a tier card (name + QUANT/TPS/TTFT strip) */
-interface PlanModelRow {
-  id: string;
-  name: string;
-  quantization: string;
-  quantizationColor: 'tertiary' | 'secondary';
-  tps: string;
-  /** Time to first token (display string, e.g. seconds) */
-  ttft: string;
-}
-
-interface PlanDetail {
-  id: string;
-  name: string;
-  tierId: string;
-  price: string;
-  period: string;
-  models: PlanModelRow[];
-}
+import { SupabaseService } from '../../services/supabase.service';
+import type { ProviderPageData } from './provider.models';
 
 @Component({
   selector: 'app-provider',
@@ -28,87 +11,51 @@ interface PlanDetail {
   imports: [CommonModule, RouterLink],
   templateUrl: './provider.component.html'
 })
-export class ProviderComponent {
-  @Input() providerId: string = '';
+export class ProviderComponent implements OnInit {
+  private readonly route = inject(ActivatedRoute);
+  private readonly supabase = inject(SupabaseService);
+  private readonly destroyRef = inject(DestroyRef);
 
-  providerName = 'Alibaba Cloud';
-  lastUpdated = '2024-10-24 14:30:01 UTC';
+  readonly loading = signal(true);
+  readonly loadError = signal<string | null>(null);
+  readonly providerPage = signal<ProviderPageData | null>(null);
 
-  plans: PlanDetail[] = [
-    {
-      id: 'lite',
-      name: 'LITE ENTRY',
-      tierId: 'ACMS LITE 001',
-      price: '$10',
-      period: '/ MO',
-      models: [
-        {
-          id: 'kimi-8b',
-          name: 'Kimi 8B',
-          quantization: 'INT4',
-          quantizationColor: 'tertiary',
-          tps: '18.5',
-          ttft: '0.38s'
-        },
-        {
-          id: 'kimi-2b',
-          name: 'Kimi 2B',
-          quantization: 'INT8',
-          quantizationColor: 'tertiary',
-          tps: '44.0',
-          ttft: '0.21s'
-        }
-      ]
-    },
-    {
-      id: 'standard',
-      name: 'STANDARD (TEST)',
-      tierId: 'ACMS STD 200',
-      price: '$25',
-      period: '/ MO',
-      models: [
-        {
-          id: 'kimi-8b',
-          name: 'Kimi 8B',
-          quantization: 'INT8',
-          quantizationColor: 'tertiary',
-          tps: '52.0',
-          ttft: '0.31s'
-        },
-        {
-          id: 'qwen-7b',
-          name: 'Qwen 7B',
-          quantization: 'INT8',
-          quantizationColor: 'tertiary',
-          tps: '61.0',
-          ttft: '0.29s'
-        }
-      ]
-    },
-    {
-      id: 'pro',
-      name: 'PRO ELITE',
-      tierId: 'ACMS PRO 500',
-      price: '$50',
-      period: '/ MO',
-      models: [
-        {
-          id: 'kimi-8b',
-          name: 'Kimi 8B',
-          quantization: 'FP16',
-          quantizationColor: 'secondary',
-          tps: '142.0',
-          ttft: '0.24s'
-        },
-        {
-          id: 'kimi-70b',
-          name: 'Kimi 70B',
-          quantization: 'FP16',
-          quantizationColor: 'secondary',
-          tps: '38.0',
-          ttft: '0.55s'
-        }
-      ]
+  /** Route param `providerId` is the provider `slug` (directory URLs). */
+  providerSlug = '';
+
+  ngOnInit(): void {
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
+      const slug = params.get('providerId') ?? '';
+      this.providerSlug = slug;
+      void this.loadPage(slug);
+    });
+  }
+
+  private async loadPage(slug: string): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set(null);
+    this.providerPage.set(null);
+
+    if (!slug.trim()) {
+      this.loadError.set('Missing provider.');
+      this.loading.set(false);
+      return;
     }
-  ];
+
+    try {
+      const data = await this.supabase.fetchProviderPageFromSupabase(slug);
+      this.providerPage.set(data);
+      if (!data) {
+        this.loadError.set('Provider not found.');
+      }
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
+          ? (e as { message: string }).message
+          : 'Could not load provider.';
+      this.loadError.set(message);
+    } finally {
+      this.loading.set(false);
+    }
+  }
 }
