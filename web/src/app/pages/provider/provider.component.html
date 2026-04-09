@@ -5,6 +5,9 @@
   <app-catalog-refresh-strip class="shrink-0" />
 </div>
 
+@if (catalog.loading()) {
+  <p class="mb-6 font-mono text-sm text-zinc-500">Loading catalog data…</p>
+}
 @if (loading()) {
   <p class="mb-6 font-mono text-sm text-zinc-500">Loading provider…</p>
 } @else if (loadError()) {
@@ -43,7 +46,7 @@
                   {{ plan.name }}
                 </a>
                 <div class="tabular-nums text-zinc-800">
-                  <span class="font-mono text-lg font-bold">{{ plan.price }}</span>
+                  <span class="font-mono text-lg font-normal tabular-nums text-zinc-900">{{ plan.price }}</span>
                   <span class="mt-0.5 block font-mono text-[10px] tracking-wide text-zinc-500">{{ plan.period }}</span>
                 </div>
               </div>
@@ -116,7 +119,8 @@
           AUDIT VERIFICATION CERTIFICATE
         </h4>
         <p class="font-mono text-[0.7rem] text-zinc-600 uppercase leading-loose">
-          The data presented above has been mathematically verified against {{ vm.providerName }} API endpoints.
+          The data presented above has been mathematically verified against
+          <span class="normal-case">{{ vm.providerName }}</span> API endpoints.
           Performance metrics represent sustained throughput under standard load conditions.
           No synthetic interpolation was used in these findings.
         </p>

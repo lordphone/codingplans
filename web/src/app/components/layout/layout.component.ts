@@ -10,25 +10,37 @@ import { CatalogStore } from '../../services/catalog-store.service';
   template: `
     <div class="min-h-screen flex flex-col">
       <!-- TopNavBar -->
-      <nav class="fixed top-0 left-0 right-0 z-50 flex justify-between items-center w-full px-12 h-16 bg-white border-b border-zinc-200">
-        <div class="flex items-center gap-4">
-          <a routerLink="/" class="text-xl font-light tracking-[0.5em] text-zinc-900 uppercase">
+      <nav
+        class="fixed top-0 left-0 right-0 z-50 flex min-h-16 w-full min-w-0 items-center justify-between gap-6 border-b border-zinc-200 bg-white px-6 sm:px-12"
+      >
+        <div class="min-w-0 flex-1">
+          <a
+            routerLink="/"
+            class="block truncate text-lg font-light uppercase tracking-[0.35em] text-zinc-900 sm:text-xl sm:tracking-[0.5em]"
+          >
             CODING PLAN COMPARISON
           </a>
-          <span class="font-mono text-[9px] text-zinc-400 uppercase">v{{ appVersion }}</span>
         </div>
-        <div class="flex gap-12">
-          <a routerLink="/directory"
-             routerLinkActive="border-b border-zinc-900 text-zinc-900"
-             [routerLinkActiveOptions]="{ exact: true }"
-             class="font-['Inter'] uppercase tracking-[0.2em] text-[10px] font-bold text-zinc-400 pb-1 hover:text-zinc-900 transition-colors">
+        <div class="flex shrink-0 items-center gap-8 sm:gap-12">
+          <a
+            routerLink="/directory"
+            routerLinkActive="border-b border-zinc-900 text-zinc-900"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="font-['Inter'] pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-zinc-900"
+          >
             DIRECTORY
           </a>
-          <a routerLink="/benchmarks"
-             routerLinkActive="border-b border-zinc-900 text-zinc-900"
-             class="font-['Inter'] uppercase tracking-[0.2em] text-[10px] font-bold text-zinc-400 pb-1 hover:text-zinc-900 transition-colors">
+          <a
+            routerLink="/benchmarks"
+            routerLinkActive="border-b border-zinc-900 text-zinc-900"
+            class="font-['Inter'] pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-zinc-900"
+          >
             BENCHMARKS
           </a>
+          <span
+            class="whitespace-nowrap border-l border-zinc-200 pl-6 font-mono text-[9px] uppercase text-zinc-400 sm:pl-8"
+            aria-label="App version"
+          >v{{ appVersion }}</span>
         </div>
       </nav>
 

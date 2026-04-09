@@ -14,7 +14,7 @@
     </p>
   }
   @if (loading()) {
-    <p class="mb-6 font-mono text-sm text-zinc-500">Loading directory…</p>
+    <p class="mb-6 font-mono text-sm text-zinc-500">Loading catalog data…</p>
   }
 
   <div class="mb-12">
@@ -46,7 +46,7 @@
     @for (provider of vm.providers; track provider.id) {
       <section class="space-y-4">
         <div class="flex items-end justify-between border-b border-zinc-200 pb-2">
-          <a [routerLink]="['/directory', provider.id]" class="text-xl font-bold tracking-tight uppercase hover:text-emerald-700 transition-colors">
+          <a [routerLink]="['/directory', provider.id]" class="text-xl font-bold tracking-tight hover:text-emerald-700 transition-colors">
             {{ provider.name }}
           </a>
           <span class="font-mono text-[10px] text-zinc-400">SLUG: {{ provider.id }}</span>
@@ -144,7 +144,7 @@
                         [attr.rowspan]="plan.modelRows.length"
                         class="align-middle bg-zinc-50/40 px-4 py-4 text-right"
                       >
-                        <span class="font-mono text-base font-bold tabular-nums text-zinc-900">{{ plan.price }}</span>
+                        <span class="font-mono text-base font-normal tabular-nums text-zinc-900">{{ plan.price }}</span>
                         <span class="mt-1 block font-mono text-[10px] tracking-wide text-zinc-500">{{ plan.period }}</span>
                       </td>
                     }

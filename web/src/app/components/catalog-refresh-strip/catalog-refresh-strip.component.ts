@@ -6,8 +6,9 @@ import { CatalogStore } from '../../services/catalog-store.service';
   standalone: true,
   template: `
     <div class="flex flex-wrap items-center justify-end gap-2">
-      <span class="whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-zinc-500">
-        Data: {{ dataStatusLabel() }}
+      <span class="whitespace-nowrap font-mono text-[10px] tracking-wide text-zinc-500">
+        <span class="text-zinc-500">data timestamp:</span>
+        <span class="ml-1.5 tabular-nums text-zinc-700">{{ dataTimeValue() }}</span>
       </span>
       <button
         type="button"
@@ -24,12 +25,13 @@ import { CatalogStore } from '../../services/catalog-store.service';
 export class CatalogRefreshStripComponent {
   readonly catalog = inject(CatalogStore);
 
-  readonly dataStatusLabel = computed(() => {
+  /** Date/time with seconds; shown after the “data timestamp:” label. */
+  readonly dataTimeValue = computed(() => {
     const t = this.catalog.fetchedAt();
     if (t != null) {
       return new Intl.DateTimeFormat(undefined, {
         dateStyle: 'short',
-        timeStyle: 'short'
+        timeStyle: 'medium'
       }).format(new Date(t));
     }
     if (this.catalog.loading()) {

@@ -16,7 +16,7 @@ import type { ProviderPageData } from './provider.models';
 })
 export class ProviderComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
-  private readonly catalog = inject(CatalogStore);
+  readonly catalog = inject(CatalogStore);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly loading = signal(true);

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
@@ -162,8 +162,14 @@ export class PlanComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly supabase = inject(SupabaseService);
-  private readonly catalog = inject(CatalogStore);
+  readonly catalog = inject(CatalogStore);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** For nav “back to provider” while the shell is visible (before page data resolves). */
+  readonly providerRouteSlug = toSignal(
+    this.route.paramMap.pipe(map(p => p.get('providerId') ?? '')),
+    { initialValue: '' }
+  );
 
   readonly windowDays = WINDOW_DAYS;
 

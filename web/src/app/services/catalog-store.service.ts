@@ -8,7 +8,8 @@ import { SupabaseService } from './supabase.service';
 /** Align with benchmark write cadence (~3h); avoids refetching the full catalog on every navigation. */
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
-const SESSION_KEY = 'codingplans.catalog.v1';
+/** Bump when catalog payload shape or copy (e.g. billing period label) must refresh for all clients. */
+const SESSION_KEY = 'codingplans.catalog.v2';
 
 interface PersistedCatalogPayload {
   fetchedAt: number;
