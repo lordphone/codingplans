@@ -10,6 +10,7 @@ import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
+import { DIRECTORY_ROLLING_WINDOW_DAYS } from '../../services/supabase.service';
 import { formatTtftSeconds } from '../../shared/format-metrics';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
 
@@ -80,6 +81,10 @@ function computeTpsBarPercent(tps: number, maxTps: number): number {
 })
 export class DirectoryComponent {
   private readonly catalog = inject(CatalogStore);
+
+  /** Matches directory TPS/TTFT aggregation in `SupabaseService` (not plan/provider windows). */
+  readonly benchmarkRollingDays = DIRECTORY_ROLLING_WINDOW_DAYS;
+  readonly performanceMetricsTooltip = `TPS and TTFT are averaged over the last ${DIRECTORY_ROLLING_WINDOW_DAYS} UTC days.`;
 
   /** Shared `<th>` classes (bordered columns vs last column). */
   readonly tableHeadCellClass =

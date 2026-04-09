@@ -70,8 +70,8 @@ export class SupabaseService {
   }
 
   /**
-   * Directory listing: nested providers → plans → plan_models → models; **rolling-window averages** for TPS/TTFT
-   * over {@link BENCHMARK_WINDOW_DAYS} days; **quantization** from the **latest** run (any time) with non-null
+   * Directory listing: nested providers → plans → plan_models → models; TPS/TTFT use **{@link DIRECTORY_ROLLING_WINDOW_DAYS}-day**
+   * rolling averages (UTC) on the directory and provider overview. Plan detail routes use {@link BENCHMARK_WINDOW_DAYS}-day runs for charts. **Quantization** from the **latest** run (any time) with non-null
    * `quantization` for that plan+model. Also returns a map of prebuilt {@link PlanPerformancePage} entries so
    * plan routes can skip refetching after an in-app visit to the directory.
    * **Usage limits** column shows '—' until we surface `plan_models.usage_limit` again.
@@ -91,14 +91,14 @@ export class SupabaseService {
       ...new Set(providers.flatMap(p => (p.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id)))
     ];
 
-    const { statsByPlanModel, latestQuantByPlanModel, runsByPlanId, quantRowsDesc } =
+    const { statsByPlanModel, statsByPlanModelDirectory, latestQuantByPlanModel, runsByPlanId, quantRowsDesc } =
       await this.loadBenchmarkAggregatesForPlanIds(planIds);
 
-    const directoryProviders = mapProvidersToDirectory(providers, statsByPlanModel, latestQuantByPlanModel);
+    const directoryProviders = mapProvidersToDirectory(providers, statsByPlanModelDirectory, latestQuantByPlanModel);
     const planPagesByKey = buildPlanPagesBySlugKey(providers, runsByPlanId);
     const providerPagesBySlug = buildProviderPagesBySlug(
       providers,
-      statsByPlanModel,
+      statsByPlanModelDirectory,
       latestQuantByPlanModel,
       runsByPlanId,
       quantRowsDesc
@@ -162,19 +162,28 @@ export class SupabaseService {
 
   private async loadBenchmarkAggregatesForPlanIds(planIds: string[]): Promise<{
     statsByPlanModel: Map<string, PlanModelBenchmarkStats>;
+    statsByPlanModelDirectory: Map<string, PlanModelBenchmarkStats>;
     latestQuantByPlanModel: Map<string, string>;
     latestRunAtIso: string | null;
     runsByPlanId: Map<string, BenchmarkRun[]>;
     quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>>;
   }> {
     const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
+    const statsByPlanModelDirectory = new Map<string, PlanModelBenchmarkStats>();
     const latestQuantByPlanModel = new Map<string, string>();
     let latestRunAtIso: string | null = null;
     const runsByPlanId = new Map<string, BenchmarkRun[]>();
     const quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>> = [];
 
     if (planIds.length === 0) {
-      return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso, runsByPlanId, quantRowsDesc };
+      return {
+        statsByPlanModel,
+        statsByPlanModelDirectory,
+        latestQuantByPlanModel,
+        latestRunAtIso,
+        runsByPlanId,
+        quantRowsDesc
+      };
     }
 
     const sinceIso = rollingWindowStartUtcIso(BENCHMARK_WINDOW_DAYS);
@@ -213,6 +222,9 @@ export class SupabaseService {
 
     const windowRuns = (runsRes.data ?? []) as BenchmarkRun[];
     buildRollingWindowStatsIntoMap(windowRuns, statsByPlanModel);
+    const sinceDirectoryIso = rollingWindowStartUtcIso(DIRECTORY_ROLLING_WINDOW_DAYS);
+    const directoryRuns = windowRuns.filter(r => r.run_at >= sinceDirectoryIso);
+    buildRollingWindowStatsIntoMap(directoryRuns, statsByPlanModelDirectory);
     const quantData = (quantRes.data ?? []) as Array<Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'quantization' | 'run_at'>>;
     buildLatestQuantizationMap(quantData, latestQuantByPlanModel);
     latestRunAtIso = latestRes.data?.run_at ?? null;
@@ -221,12 +233,22 @@ export class SupabaseService {
       quantRowsDesc.push({ plan_id: r.plan_id, run_at: r.run_at });
     }
 
-    return { statsByPlanModel, latestQuantByPlanModel, latestRunAtIso, runsByPlanId, quantRowsDesc };
+    return {
+      statsByPlanModel,
+      statsByPlanModelDirectory,
+      latestQuantByPlanModel,
+      latestRunAtIso,
+      runsByPlanId,
+      quantRowsDesc
+    };
   }
 }
 
-/** Directory averages, plan-page charts, and directory snapshot: same UTC rolling window (daily buckets on plan UI). */
+/** Plan page charts, provider cards, and benchmark fetch window (UTC). */
 const BENCHMARK_WINDOW_DAYS = 30;
+
+/** Directory table TPS/TTFT averages only (subset of runs inside {@link BENCHMARK_WINDOW_DAYS}). */
+export const DIRECTORY_ROLLING_WINDOW_DAYS = 14;
 
 interface PlanModelJunction {
   model_id: string;

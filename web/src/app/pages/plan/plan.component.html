@@ -4,7 +4,7 @@
       @if (providerRouteSlug()) {
         <a
           [routerLink]="['/directory', providerRouteSlug()]"
-          class="inline-block font-mono text-[11px] uppercase tracking-wider text-zinc-500 transition-colors hover:text-emerald-700"
+          class="inline-block font-mono text-[11px] uppercase tracking-wider text-zinc-500 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
         >
           ← Back to provider details
         </a>
@@ -34,7 +34,7 @@
       <p class="mb-2 text-sm">
         <a
           [routerLink]="['/directory', vm.providerSlug]"
-          class="text-zinc-500 transition-colors hover:text-emerald-700"
+          class="font-medium text-zinc-600 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
         >
           {{ vm.providerName }}
         </a>

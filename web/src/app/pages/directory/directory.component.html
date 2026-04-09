@@ -46,7 +46,10 @@
     @for (provider of vm.providers; track provider.id) {
       <section class="space-y-4">
         <div class="flex items-end justify-between border-b border-zinc-200 pb-2">
-          <a [routerLink]="['/directory', provider.id]" class="text-xl font-bold tracking-tight hover:text-emerald-700 transition-colors">
+          <a
+            [routerLink]="['/directory', provider.id]"
+            class="text-xl font-bold tracking-tight text-zinc-900 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
+          >
             {{ provider.name }}
           </a>
           <span class="font-mono text-[10px] text-zinc-400">SLUG: {{ provider.id }}</span>
@@ -65,7 +68,17 @@
               <tr class="border-b border-zinc-200">
                 @for (col of tableHeadColumns; track col.id) {
                   <th scope="col" [class]="col.id === 'cost' ? tableHeadLastCellClass : tableHeadCellClass">
-                    {{ col.label }}
+                    @if (col.id === 'performance') {
+                      {{ col.label }}
+                      <span
+                        class="ml-1 cursor-help font-normal normal-case tracking-normal text-zinc-500"
+                        [attr.title]="performanceMetricsTooltip"
+                      >
+                        ({{ benchmarkRollingDays }}-day avg)
+                      </span>
+                    } @else {
+                      {{ col.label }}
+                    }
                   </th>
                 }
               </tr>
@@ -81,7 +94,7 @@
                       >
                         <a
                           [routerLink]="['/directory', provider.id, plan.id, plan.modelRows[0].modelSlug]"
-                          class="font-bold text-sm leading-snug tracking-tight text-zinc-900 hover:text-emerald-700 transition-colors"
+                          class="font-bold text-sm leading-snug tracking-tight text-zinc-900 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
                         >
                           {{ plan.name }}
                         </a>
@@ -93,7 +106,7 @@
                     <td class="border-r border-zinc-200 px-4 py-3.5 font-mono text-xs leading-snug align-middle">
                       <a
                         [routerLink]="['/directory', provider.id, plan.id, modelRow.modelSlug]"
-                        class="text-zinc-800 hover:text-emerald-700 transition-colors"
+                        class="text-zinc-800 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
                       >
                         {{ modelRow.modelName }}
                       </a>

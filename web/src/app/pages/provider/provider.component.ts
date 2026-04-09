@@ -6,6 +6,7 @@ import { from, map, switchMap } from 'rxjs';
 import { BackToDirectoryLinkComponent } from '../../components/back-to-directory-link/back-to-directory-link.component';
 import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
+import { DIRECTORY_ROLLING_WINDOW_DAYS } from '../../services/supabase.service';
 import type { ProviderPageData } from './provider.models';
 
 @Component({
@@ -18,6 +19,9 @@ export class ProviderComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   readonly catalog = inject(CatalogStore);
   private readonly destroyRef = inject(DestroyRef);
+
+  readonly performanceRollingDays = DIRECTORY_ROLLING_WINDOW_DAYS;
+  readonly performanceRollingTooltip = `TPS and TTFT are averaged over the last ${DIRECTORY_ROLLING_WINDOW_DAYS} UTC days (same as the directory table).`;
 
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
