@@ -15,6 +15,8 @@ import type {
   ProviderPageQuantColor
 } from '../pages/provider/provider.models';
 import type { BenchmarkRun, ProviderWithPlansAndModels } from '../types/database.types';
+import { formatTtftSeconds } from '../shared/format-metrics';
+import { PLAN_BILLING_PERIOD_LABEL } from '../shared/plan-billing';
 
 /** Result of `fetchDirectoryFromSupabase`: directory table, plan pages, and provider overview pages (one Supabase load). */
 export interface DirectoryFetchResult {
@@ -366,7 +368,7 @@ function buildPlanPerformancePageFromRuns(
     planSlug: planRow.slug,
     planSubtitle: planRow.description?.trim() ?? '',
     priceLabel: formatMonthlyPrice(planRow.price_per_month, planRow.currency),
-    periodLabel: '/ month'
+    periodLabel: PLAN_BILLING_PERIOD_LABEL
   };
 
   if (junctions.length === 0) {
@@ -537,7 +539,7 @@ function mapOnePlan(
     name: plan.name,
     subtitle: plan.description?.trim() ?? '',
     price: formatMonthlyPrice(plan.price_per_month, plan.currency),
-    period: '/ Month',
+    period: PLAN_BILLING_PERIOD_LABEL,
     modelRows
   };
 }
@@ -694,7 +696,7 @@ function mapOnePlanForProviderPage(
       quantization = '—';
       quantizationColor = 'neutral';
     } else {
-      quantization = latestQ.toUpperCase();
+      quantization = latestQ;
       quantizationColor = inferQuantizationStatusFromLabel(latestQ) === 'scam' ? 'tertiary' : 'secondary';
     }
 
@@ -704,7 +706,7 @@ function mapOnePlanForProviderPage(
       quantization,
       quantizationColor,
       tps: stats?.avgTps != null ? String(Math.round(stats.avgTps)) : '—',
-      ttft: formatProviderTtft(stats?.avgTtftS ?? null)
+      ttft: formatTtftSeconds(stats?.avgTtftS ?? null)
     });
   }
 
@@ -715,9 +717,8 @@ function mapOnePlanForProviderPage(
   return {
     id: plan.slug,
     name: plan.name,
-    tierId: plan.slug.replace(/-/g, ' ').toUpperCase(),
     price: formatMonthlyPrice(plan.price_per_month, plan.currency),
-    period: '/ MO',
+    period: PLAN_BILLING_PERIOD_LABEL,
     models
   };
 }
@@ -730,15 +731,3 @@ function formatLastUpdatedUtc(latestRunAt: string | null, fallbackCreatedAt: str
   }
   return `${d.toISOString().replace('T', ' ').slice(0, 19)} UTC`;
 }
-
-/** TTFT for provider cards: seconds → `0.75S`, sub-second → `NNN MS`. */
-function formatProviderTtft(seconds: number | null): string {
-  if (seconds == null || Number.isNaN(seconds)) {
-    return '—';
-  }
-  if (seconds < 1) {
-    return `${Math.round(seconds * 1000)} MS`;
-  }
-  return `${seconds.toFixed(2)}S`;
-}
-

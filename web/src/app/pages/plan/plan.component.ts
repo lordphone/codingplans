@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, EMPTY, from, map, switchMap } from 'rxjs';
+import { BackToDirectoryLinkComponent } from '../../components/back-to-directory-link/back-to-directory-link.component';
 import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
 import { SupabaseService } from '../../services/supabase.service';
@@ -153,7 +154,7 @@ function buildMetricSparkline(
 @Component({
   selector: 'app-plan',
   standalone: true,
-  imports: [CommonModule, RouterLink, CatalogRefreshStripComponent],
+  imports: [CommonModule, RouterLink, BackToDirectoryLinkComponent, CatalogRefreshStripComponent],
   templateUrl: './plan.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

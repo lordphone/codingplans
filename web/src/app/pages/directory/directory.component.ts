@@ -10,6 +10,7 @@ import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
+import { formatTtftSeconds } from '../../shared/format-metrics';
 import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from './directory.models';
 
 interface DirectoryViewModel {
@@ -26,7 +27,6 @@ function modelRowMatchesQuery(
 ): boolean {
   return (
     row.modelName.toLowerCase().includes(query) ||
-    row.usageLabel.toLowerCase().includes(query) ||
     row.quantization.toLowerCase().includes(query) ||
     plan.name.toLowerCase().includes(query) ||
     plan.id.toLowerCase().includes(query) ||
@@ -92,7 +92,6 @@ export class DirectoryComponent {
     { id: 'model', label: 'Model' },
     { id: 'quantization', label: 'Quantization' },
     { id: 'performance', label: 'Performance' },
-    { id: 'usage', label: 'Usage limits' },
     { id: 'cost', label: 'Cost' }
   ] as const;
 
@@ -107,13 +106,7 @@ export class DirectoryComponent {
   }
 
   formatTtft(seconds: number | null): string {
-    if (seconds == null || Number.isNaN(seconds)) {
-      return '—';
-    }
-    if (seconds < 1) {
-      return `${Math.round(seconds * 1000)} ms`;
-    }
-    return `${seconds.toFixed(2)} s`;
+    return formatTtftSeconds(seconds);
   }
 
   /** “Loss Detected” only when the benchmark label calls out scam/reset; INT4/INT8 are red without this line. */

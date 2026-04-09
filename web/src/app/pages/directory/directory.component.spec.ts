@@ -35,7 +35,7 @@ function plan(overrides: Partial<DirectoryPlan> = {}): DirectoryPlan {
     name: 'Starter Plan',
     subtitle: '',
     price: '$10',
-    period: '/ Month',
+    period: '/ month',
     modelRows: [row()],
     ...overrides
   };
@@ -62,7 +62,7 @@ describe('DirectoryComponent', () => {
             name: 'Basic',
             subtitle: 'For testing',
             price: '$20',
-            period: '/ Month',
+            period: '/ month',
             modelRows: [
               {
                 rowId: 'basic:gpt',
@@ -302,7 +302,7 @@ describe('DirectoryComponent', () => {
       expect(component.view().maxTps).toBe(40);
     });
 
-    it('matches search across model, plan, provider, quantization, and usage', async () => {
+    it('matches search across model, plan, provider, and quantization', async () => {
       const { component, providersSig } = await setup({ providers: [] });
       const p = provider();
       providersSig.set([p]);
@@ -317,9 +317,6 @@ describe('DirectoryComponent', () => {
       expect(component.view().rowCount).toBe(1);
 
       component.searchQuery.set('fp16');
-      expect(component.view().rowCount).toBe(1);
-
-      component.searchQuery.set('—');
       expect(component.view().rowCount).toBe(1);
 
       component.searchQuery.set('zzz');

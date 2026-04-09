@@ -14,7 +14,6 @@ export interface ProviderPageModelRow {
 export interface ProviderPagePlan {
   id: string;
   name: string;
-  tierId: string;
   price: string;
   period: string;
   models: ProviderPageModelRow[];

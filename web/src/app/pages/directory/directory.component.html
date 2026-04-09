@@ -1,7 +1,7 @@
 <div class="relative">
   @let vm = view();
 
-  <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <header class="min-w-0">
       <h1 class="text-[3.5rem] font-extrabold tracking-tighter leading-none uppercase">Provider & Plan Directory</h1>
     </header>
@@ -55,12 +55,11 @@
         <div class="overflow-hidden rounded-sm border border-zinc-200 bg-white shadow-sm">
           <table class="w-full table-fixed border-collapse text-left">
             <colgroup>
+              <col class="w-[18%]" />
+              <col class="w-[15%]" />
               <col class="w-[16%]" />
-              <col class="w-[14%]" />
-              <col class="w-[15%]" />
+              <col class="w-[28%]" />
               <col class="w-[23%]" />
-              <col class="w-[17%]" />
-              <col class="w-[15%]" />
             </colgroup>
             <thead>
               <tr class="border-b border-zinc-200">
@@ -140,16 +139,13 @@
                         </div>
                       </div>
                     </td>
-                    <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">
-                      <span class="font-mono text-[11px] leading-snug text-zinc-600">{{ modelRow.usageLabel }}</span>
-                    </td>
                     @if (rowIdx === 0) {
                       <td
                         [attr.rowspan]="plan.modelRows.length"
                         class="align-middle bg-zinc-50/40 px-4 py-4 text-right"
                       >
                         <span class="font-mono text-base font-bold tabular-nums text-zinc-900">{{ plan.price }}</span>
-                        <span class="mt-1 block font-mono text-[10px] uppercase tracking-wide text-zinc-500">{{ plan.period }}</span>
+                        <span class="mt-1 block font-mono text-[10px] tracking-wide text-zinc-500">{{ plan.period }}</span>
                       </td>
                     }
                   </tr>

@@ -1,6 +1,9 @@
 <div class="relative">
-  <div class="mb-6 flex justify-end">
-    <app-catalog-refresh-strip />
+  <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <nav>
+      <app-back-to-directory-link />
+    </nav>
+    <app-catalog-refresh-strip class="shrink-0" />
   </div>
 @if (missingParams()) {
   <p class="mb-8 font-mono text-sm text-zinc-600">Missing provider or plan in the URL.</p>
@@ -15,29 +18,25 @@
 } @else {
   @if (page(); as vm) {
   <div class="font-sans text-zinc-900">
-    <nav class="mb-8">
-      <a
-        routerLink="/directory"
-        class="text-sm font-medium text-zinc-500 transition-colors hover:text-teal-600"
-      >
-        ← Directory
-      </a>
-    </nav>
-
     <header class="mb-10">
       <h1 class="text-3xl font-semibold tracking-tight text-zinc-900 md:text-4xl">
         {{ vm.planName }}
       </h1>
       <p class="mt-2 text-sm text-zinc-500">
-        <a [routerLink]="['/directory', vm.providerSlug]" class="text-zinc-600 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-teal-600 hover:decoration-teal-500/40">{{ vm.providerName }}</a>
+        <a
+          [routerLink]="['/directory', vm.providerSlug]"
+          class="font-medium text-zinc-600 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-600/40"
+        >
+          {{ vm.providerName }}
+        </a>
         <span class="text-zinc-400"> · </span>
-        <span class="tabular-nums text-zinc-700">{{ vm.priceLabel }}</span>
-        <span class="text-zinc-400"> {{ vm.periodLabel }}</span>
+        <span class="font-mono font-medium tabular-nums text-zinc-800">{{ vm.priceLabel }}</span>
+        <span class="text-zinc-500"> {{ vm.periodLabel }}</span>
       </p>
       @if (vm.planSubtitle) {
         <p class="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-600">{{ vm.planSubtitle }}</p>
       }
-      <p class="mt-3 text-xs text-zinc-400">Last {{ windowDays }} days (UTC) · daily averages</p>
+      <p class="mt-3 font-mono text-xs text-zinc-400">Last {{ windowDays }} days (UTC) · daily averages</p>
     </header>
 
     @if (vm.models.length === 0) {
@@ -133,7 +132,7 @@
               >
                 @if (sp && sp.tps.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
-                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-teal-500"></span>
+                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-emerald-600"></span>
                     <span class="truncate">{{ model.modelName }}</span>
                   </span>
                   <span class="shrink-0 text-zinc-500">
@@ -200,7 +199,7 @@
               >
                 @if (sp && sp.ttft.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
-                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-blue-500"></span>
+                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-emerald-600"></span>
                     <span class="truncate">{{ model.modelName }}</span>
                   </span>
                   <span class="shrink-0 text-zinc-500">
@@ -243,12 +242,12 @@
                             <div class="flex items-start gap-2">
                               <span
                                 class="min-w-0 flex-1 text-xs font-medium uppercase leading-snug"
-                                [class.text-blue-600]="row.status === 'verified'"
+                                [class.text-emerald-700]="row.status === 'verified'"
                                 [class.text-red-800]="row.status === 'scam'"
                                 >{{ row.label }}</span>
                               <span
                                 class="mt-1 h-2.5 w-2.5 shrink-0 rounded-[1px]"
-                                [class.bg-blue-500]="row.status === 'verified'"
+                                [class.bg-emerald-600]="row.status === 'verified'"
                                 [class.bg-red-700]="row.status === 'scam'"
                               ></span>
                             </div>

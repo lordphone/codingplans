@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { from, map, switchMap } from 'rxjs';
+import { BackToDirectoryLinkComponent } from '../../components/back-to-directory-link/back-to-directory-link.component';
 import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
 import type { ProviderPageData } from './provider.models';
@@ -10,7 +11,7 @@ import type { ProviderPageData } from './provider.models';
 @Component({
   selector: 'app-provider',
   standalone: true,
-  imports: [CommonModule, RouterLink, CatalogRefreshStripComponent],
+  imports: [CommonModule, RouterLink, BackToDirectoryLinkComponent, CatalogRefreshStripComponent],
   templateUrl: './provider.component.html'
 })
 export class ProviderComponent implements OnInit {
