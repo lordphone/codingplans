@@ -87,19 +87,19 @@
             <div class="flex h-full min-h-0 flex-col border-b border-zinc-200 bg-white p-5 md:border-b-0">
               <div class="mb-1 flex shrink-0 flex-wrap items-start justify-between gap-2">
                 <h3 class="text-sm font-medium text-zinc-500">Throughput</h3>
-                <div class="flex flex-shrink-0 flex-wrap justify-end gap-1.5" role="group" aria-label="Time range">
+                <div class="flex flex-shrink-0 flex-wrap justify-end gap-1.5" role="group" aria-label="Throughput time range">
                   @for (d of metricWindowOptions; track d) {
                     <button
                       type="button"
-                      (click)="selectMetricWindow(d)"
+                      (click)="selectThroughputWindow(d)"
                       class="min-w-[2.75rem] rounded-md border px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
-                      [class.border-zinc-900]="selectedMetricWindowDays() === d"
-                      [class.bg-zinc-900]="selectedMetricWindowDays() === d"
-                      [class.text-white]="selectedMetricWindowDays() === d"
-                      [class.border-zinc-200]="selectedMetricWindowDays() !== d"
-                      [class.bg-white]="selectedMetricWindowDays() !== d"
-                      [class.text-zinc-600]="selectedMetricWindowDays() !== d"
-                      [class.hover:border-zinc-400]="selectedMetricWindowDays() !== d"
+                      [class.border-zinc-900]="throughputWindowDays() === d"
+                      [class.bg-zinc-900]="throughputWindowDays() === d"
+                      [class.text-white]="throughputWindowDays() === d"
+                      [class.border-zinc-200]="throughputWindowDays() !== d"
+                      [class.bg-white]="throughputWindowDays() !== d"
+                      [class.text-zinc-600]="throughputWindowDays() !== d"
+                      [class.hover:border-zinc-400]="throughputWindowDays() !== d"
                     >
                       {{ d }}d
                     </button>
@@ -107,21 +107,61 @@
                 </div>
               </div>
               <p class="mb-3 min-h-8 shrink-0 text-xs leading-5 text-zinc-400">Mean daily tokens per second</p>
-              <div class="-mx-1 h-44 w-full shrink-0">
+              <div
+                class="border border-zinc-200/90 bg-zinc-50/70 p-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]"
+              >
+                <div
+                  class="relative w-full min-h-[7.5rem] shrink-0"
+                  [style.aspect-ratio]="chartViewW + ' / ' + chartViewH"
+                >
                 @if (sp && sp.tps.hasData) {
+                  @if (tpsChartHover(); as tTip) {
+                    <div
+                      class="pointer-events-none absolute z-20 max-w-[10.5rem] rounded border border-zinc-200/90 bg-white/95 px-2 py-1.5 text-[10px] shadow-sm backdrop-blur-[2px]"
+                      [style.left.px]="tTip.anchorLeft"
+                      [style.top.px]="tTip.anchorTop"
+                    >
+                      <div class="font-mono text-[9px] leading-tight text-zinc-500">{{ tTip.dateLine }}</div>
+                      <div class="mt-0.5 font-medium tabular-nums leading-tight text-zinc-900">{{ tTip.valueLine }}</div>
+                    </div>
+                  }
                   <svg
-                    class="h-full w-full overflow-visible"
-                    viewBox="0 0 320 120"
-                    preserveAspectRatio="none"
+                    class="block h-full w-full cursor-crosshair touch-none overflow-visible"
+                    [attr.viewBox]="'0 0 ' + chartViewW + ' ' + chartViewH"
+                    preserveAspectRatio="xMidYMid meet"
                     role="img"
                     aria-label="Throughput trend"
+                    (pointermove)="onTpsChartPointerMove($event, sp.tps)"
+                    (pointerleave)="onTpsChartPointerLeave()"
                   >
                     <defs>
                       <linearGradient [id]="gradTps" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.2" />
+                        <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.12" />
                         <stop offset="100%" stop-color="#14b8a6" stop-opacity="0" />
                       </linearGradient>
                     </defs>
+                    <line
+                      [attr.x1]="sp.tps.axisLineX1"
+                      [attr.y1]="sp.tps.plotBottomY"
+                      [attr.x2]="sp.tps.axisLineX2"
+                      [attr.y2]="sp.tps.plotBottomY"
+                      stroke="#d4d4d8"
+                      stroke-width="1"
+                      vector-effect="non-scaling-stroke"
+                    />
+                    @for (tick of sp.tps.axisTicks; track tick.index) {
+                      <text
+                        [attr.x]="tick.x"
+                        [attr.y]="chartViewH - 5"
+                        dominant-baseline="alphabetic"
+                        text-anchor="middle"
+                        fill="#71717a"
+                        class="select-none"
+                        style="font-size: 9px; font-family: ui-monospace, monospace"
+                      >
+                        {{ tick.label }}
+                      </text>
+                    }
                     @for (seg of sp.tps.segments; track $index) {
                       @if (seg.areaPathD) {
                         <path [attr.d]="seg.areaPathD" [attr.fill]="'url(#' + gradTps + ')'" stroke="none" />
@@ -131,12 +171,36 @@
                           [attr.d]="seg.linePathD"
                           fill="none"
                           stroke="#14b8a6"
-                          stroke-width="2.5"
+                          stroke-width="1.75"
                           stroke-linecap="round"
                           stroke-linejoin="round"
                           vector-effect="non-scaling-stroke"
                         />
                       }
+                    }
+                    @if (tpsChartHover(); as tH) {
+                      <line
+                        [attr.x1]="tH.lineX"
+                        [attr.y1]="chartPadTop"
+                        [attr.x2]="tH.lineX"
+                        [attr.y2]="sp.tps.plotBottomY"
+                        stroke="#71717a"
+                        stroke-width="1"
+                        stroke-dasharray="4 3"
+                        vector-effect="non-scaling-stroke"
+                        opacity="0.85"
+                      />
+                    }
+                    @for (dot of sp.tps.dots; track dot.index) {
+                      <circle
+                        [attr.cx]="dot.x"
+                        [attr.cy]="dot.y"
+                        [attr.r]="tpsChartHover()?.columnIndex === dot.index ? 3.75 : 3"
+                        fill="#ffffff"
+                        stroke="#14b8a6"
+                        [attr.stroke-width]="tpsChartHover()?.columnIndex === dot.index ? 1.75 : 1.25"
+                        vector-effect="non-scaling-stroke"
+                      />
                     }
                   </svg>
                 } @else {
@@ -144,10 +208,9 @@
                     <p class="text-sm text-zinc-400">No throughput samples in this window.</p>
                   </div>
                 }
+                </div>
               </div>
-              <div
-                class="mt-auto flex min-h-12 shrink-0 items-center justify-between border-t border-zinc-200 pt-3 text-sm"
-              >
+              <div class="mt-auto flex min-h-12 shrink-0 items-center justify-between pt-3 text-sm">
                 @if (sp && sp.tps.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
                     <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-emerald-600"></span>
@@ -167,19 +230,19 @@
             <div class="flex h-full min-h-0 flex-col bg-white p-5">
               <div class="mb-1 flex shrink-0 flex-wrap items-start justify-between gap-2">
                 <h3 class="text-sm font-medium text-zinc-500">Latency</h3>
-                <div class="flex flex-shrink-0 flex-wrap justify-end gap-1.5" role="group" aria-label="Time range">
+                <div class="flex flex-shrink-0 flex-wrap justify-end gap-1.5" role="group" aria-label="Latency time range">
                   @for (d of metricWindowOptions; track d) {
                     <button
                       type="button"
-                      (click)="selectMetricWindow(d)"
+                      (click)="selectLatencyWindow(d)"
                       class="min-w-[2.75rem] rounded-md border px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
-                      [class.border-zinc-900]="selectedMetricWindowDays() === d"
-                      [class.bg-zinc-900]="selectedMetricWindowDays() === d"
-                      [class.text-white]="selectedMetricWindowDays() === d"
-                      [class.border-zinc-200]="selectedMetricWindowDays() !== d"
-                      [class.bg-white]="selectedMetricWindowDays() !== d"
-                      [class.text-zinc-600]="selectedMetricWindowDays() !== d"
-                      [class.hover:border-zinc-400]="selectedMetricWindowDays() !== d"
+                      [class.border-zinc-900]="latencyWindowDays() === d"
+                      [class.bg-zinc-900]="latencyWindowDays() === d"
+                      [class.text-white]="latencyWindowDays() === d"
+                      [class.border-zinc-200]="latencyWindowDays() !== d"
+                      [class.bg-white]="latencyWindowDays() !== d"
+                      [class.text-zinc-600]="latencyWindowDays() !== d"
+                      [class.hover:border-zinc-400]="latencyWindowDays() !== d"
                     >
                       {{ d }}d
                     </button>
@@ -187,21 +250,61 @@
                 </div>
               </div>
               <p class="mb-3 min-h-8 shrink-0 text-xs leading-5 text-zinc-400">Time to first token</p>
-              <div class="-mx-1 h-44 w-full shrink-0">
+              <div
+                class="border border-zinc-200/90 bg-zinc-50/70 p-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]"
+              >
+                <div
+                  class="relative w-full min-h-[7.5rem] shrink-0"
+                  [style.aspect-ratio]="chartViewW + ' / ' + chartViewH"
+                >
                 @if (sp && sp.ttft.hasData) {
+                  @if (ttftChartHover(); as lTip) {
+                    <div
+                      class="pointer-events-none absolute z-20 max-w-[10.5rem] rounded border border-zinc-200/90 bg-white/95 px-2 py-1.5 text-[10px] shadow-sm backdrop-blur-[2px]"
+                      [style.left.px]="lTip.anchorLeft"
+                      [style.top.px]="lTip.anchorTop"
+                    >
+                      <div class="font-mono text-[9px] leading-tight text-zinc-500">{{ lTip.dateLine }}</div>
+                      <div class="mt-0.5 font-medium tabular-nums leading-tight text-zinc-900">{{ lTip.valueLine }}</div>
+                    </div>
+                  }
                   <svg
-                    class="h-full w-full overflow-visible"
-                    viewBox="0 0 320 120"
-                    preserveAspectRatio="none"
+                    class="block h-full w-full cursor-crosshair touch-none overflow-visible"
+                    [attr.viewBox]="'0 0 ' + chartViewW + ' ' + chartViewH"
+                    preserveAspectRatio="xMidYMid meet"
                     role="img"
                     aria-label="Latency trend"
+                    (pointermove)="onTtftChartPointerMove($event, sp.ttft)"
+                    (pointerleave)="onTtftChartPointerLeave()"
                   >
                     <defs>
                       <linearGradient [id]="gradTtft" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.2" />
+                        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.12" />
                         <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
                       </linearGradient>
                     </defs>
+                    <line
+                      [attr.x1]="sp.ttft.axisLineX1"
+                      [attr.y1]="sp.ttft.plotBottomY"
+                      [attr.x2]="sp.ttft.axisLineX2"
+                      [attr.y2]="sp.ttft.plotBottomY"
+                      stroke="#d4d4d8"
+                      stroke-width="1"
+                      vector-effect="non-scaling-stroke"
+                    />
+                    @for (tick of sp.ttft.axisTicks; track tick.index) {
+                      <text
+                        [attr.x]="tick.x"
+                        [attr.y]="chartViewH - 5"
+                        dominant-baseline="alphabetic"
+                        text-anchor="middle"
+                        fill="#71717a"
+                        class="select-none"
+                        style="font-size: 9px; font-family: ui-monospace, monospace"
+                      >
+                        {{ tick.label }}
+                      </text>
+                    }
                     @for (seg of sp.ttft.segments; track $index) {
                       @if (seg.areaPathD) {
                         <path [attr.d]="seg.areaPathD" [attr.fill]="'url(#' + gradTtft + ')'" stroke="none" />
@@ -211,12 +314,36 @@
                           [attr.d]="seg.linePathD"
                           fill="none"
                           stroke="#3b82f6"
-                          stroke-width="2.5"
+                          stroke-width="1.75"
                           stroke-linecap="round"
                           stroke-linejoin="round"
                           vector-effect="non-scaling-stroke"
                         />
                       }
+                    }
+                    @if (ttftChartHover(); as lH) {
+                      <line
+                        [attr.x1]="lH.lineX"
+                        [attr.y1]="chartPadTop"
+                        [attr.x2]="lH.lineX"
+                        [attr.y2]="sp.ttft.plotBottomY"
+                        stroke="#71717a"
+                        stroke-width="1"
+                        stroke-dasharray="4 3"
+                        vector-effect="non-scaling-stroke"
+                        opacity="0.85"
+                      />
+                    }
+                    @for (dot of sp.ttft.dots; track dot.index) {
+                      <circle
+                        [attr.cx]="dot.x"
+                        [attr.cy]="dot.y"
+                        [attr.r]="ttftChartHover()?.columnIndex === dot.index ? 3.75 : 3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        [attr.stroke-width]="ttftChartHover()?.columnIndex === dot.index ? 1.75 : 1.25"
+                        vector-effect="non-scaling-stroke"
+                      />
                     }
                   </svg>
                 } @else {
@@ -224,13 +351,12 @@
                     <p class="text-sm text-zinc-400">No latency samples in this window.</p>
                   </div>
                 }
+                </div>
               </div>
-              <div
-                class="mt-auto flex min-h-12 shrink-0 items-center justify-between border-t border-zinc-200 pt-3 text-sm"
-              >
+              <div class="mt-auto flex min-h-12 shrink-0 items-center justify-between pt-3 text-sm">
                 @if (sp && sp.ttft.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
-                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-emerald-600"></span>
+                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-blue-600"></span>
                     <span class="truncate">{{ model.modelName }}</span>
                   </span>
                   <span class="shrink-0 text-zinc-500">

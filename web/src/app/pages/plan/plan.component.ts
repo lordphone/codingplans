@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  signal,
+  type WritableSignal
+} from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -44,21 +52,54 @@ interface SparklineSegment {
   areaPathD: string;
 }
 
+/** One day column along the x-axis (for hover + axis). */
+interface MetricChartColumn {
+  index: number;
+  x: number;
+  dayKey: string;
+  axisLabel: string;
+  value: number | null;
+}
+
+interface MetricChartDot {
+  index: number;
+  x: number;
+  y: number;
+  value: number;
+}
+
+interface MetricChartAxisTick {
+  index: number;
+  x: number;
+  label: string;
+}
+
 interface MetricSparklineGeom {
   segments: SparklineSegment[];
+  columns: MetricChartColumn[];
+  dots: MetricChartDot[];
+  axisTicks: MetricChartAxisTick[];
+  /** X-axis segment (matches first/last point x; symmetric inset from view edges). */
+  axisLineX1: number;
+  axisLineX2: number;
+  plotBottomY: number;
   yMin: number | null;
   yMax: number | null;
   hasData: boolean;
   avgValue: number | null;
 }
 
-const SPARK_W = 320;
-const SPARK_H = 120;
-const SPARK_PAD_L = 4;
-const SPARK_PAD_R = 4;
-const SPARK_PAD_T = 12;
-const SPARK_PAD_B = 8;
-const SPARK_BOTTOM_Y = SPARK_H - SPARK_PAD_B;
+/** Wider viewBox so daily points spread out; keeps curves from looking overly steep. */
+const SPARK_W = 400;
+/** ViewBox height: plot + bottom time axis strip */
+const SPARK_H = 118;
+const SPARK_PAD_L = 6;
+const SPARK_PAD_R = 6;
+const SPARK_PAD_T = 8;
+/** Space below the plot for the x-axis line + date labels */
+const SPARK_AXIS_STRIP = 22;
+/** Symmetric horizontal inset so axis + points aren’t flush to the frame edges. */
+const SPARK_X_GUTTER = 14;
 
 interface SparkPt {
   x: number;
@@ -93,27 +134,85 @@ function catmullRomToBezierPath(points: SparkPt[]): string {
   return d;
 }
 
-function areaUnderSparkLine(linePathD: string, first: SparkPt, last: SparkPt): string {
+function areaUnderSparkLine(linePathD: string, first: SparkPt, last: SparkPt, plotBottomY: number): string {
   if (!linePathD) {
     return '';
   }
-  return `${linePathD} L ${last.x.toFixed(2)} ${SPARK_BOTTOM_Y} L ${first.x.toFixed(2)} ${SPARK_BOTTOM_Y} Z`;
+  return `${linePathD} L ${last.x.toFixed(2)} ${plotBottomY} L ${first.x.toFixed(2)} ${plotBottomY} Z`;
+}
+
+function pickAxisTickIndices(n: number): number[] {
+  if (n <= 0) {
+    return [];
+  }
+  if (n <= 5) {
+    return Array.from({ length: n }, (_, i) => i);
+  }
+  const k = 5;
+  const set = new Set<number>();
+  for (let j = 0; j < k; j++) {
+    set.add(Math.round((j / (k - 1)) * (n - 1)));
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+/** `dayKey` is YYYY-MM-DD (UTC bucket). */
+function formatUtcDayTooltip(dayKey: string): string {
+  const [ys, ms, ds] = dayKey.split('-');
+  if (!ys || !ms || !ds) {
+    return dayKey;
+  }
+  const y = Number(ys);
+  const m = Number(ms);
+  const d = Number(ds);
+  if (!y || !m || !d) {
+    return dayKey;
+  }
+  const month = new Date(Date.UTC(y, m - 1, d)).toLocaleString(undefined, { month: 'short', timeZone: 'UTC' });
+  return `${month} ${d}, ${y} (UTC)`;
 }
 
 function buildMetricSparkline(
   series: PlanPerformanceDayPoint[],
   valueKey: 'avgTps' | 'avgTtftS'
 ): MetricSparklineGeom {
+  const plotBottomY = SPARK_H - SPARK_AXIS_STRIP;
+  const axisLineX1 = SPARK_PAD_L + SPARK_X_GUTTER;
+  const axisLineX2 = SPARK_W - SPARK_PAD_R - SPARK_X_GUTTER;
   const n = series.length;
   if (n === 0) {
-    return { segments: [], yMin: null, yMax: null, hasData: false, avgValue: null };
+    return {
+      segments: [],
+      columns: [],
+      dots: [],
+      axisTicks: [],
+      axisLineX1,
+      axisLineX2,
+      plotBottomY,
+      yMin: null,
+      yMax: null,
+      hasData: false,
+      avgValue: null
+    };
   }
 
   const bucketVals = series
     .map(p => p[valueKey])
     .filter((v): v is number => v != null && !Number.isNaN(v));
   if (bucketVals.length === 0) {
-    return { segments: [], yMin: null, yMax: null, hasData: false, avgValue: null };
+    return {
+      segments: [],
+      columns: [],
+      dots: [],
+      axisTicks: [],
+      axisLineX1,
+      axisLineX2,
+      plotBottomY,
+      yMin: null,
+      yMax: null,
+      hasData: false,
+      avgValue: null
+    };
   }
 
   const avgValue = bucketVals.reduce((s, x) => s + x, 0) / bucketVals.length;
@@ -121,18 +220,46 @@ function buildMetricSparkline(
   let yMin = Math.min(...bucketVals);
   let yMax = Math.max(...bucketVals);
   if (yMin === yMax) {
-    const pad = yMin === 0 ? 1 : Math.abs(yMin) * 0.06;
+    const pad = yMin === 0 ? 1 : Math.abs(yMin) * 0.08;
+    yMin -= pad;
+    yMax += pad;
+  } else {
+    const span = yMax - yMin;
+    const pad = span * 0.1;
     yMin -= pad;
     yMax += pad;
   }
 
   const plotW = SPARK_W - SPARK_PAD_L - SPARK_PAD_R;
-  const plotH = SPARK_H - SPARK_PAD_T - SPARK_PAD_B;
-  const xAt = (i: number) => SPARK_PAD_L + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const plotInnerW = Math.max(0, plotW - 2 * SPARK_X_GUTTER);
+  const plotH = plotBottomY - SPARK_PAD_T;
+  const xAt = (i: number) =>
+    axisLineX1 + (n === 1 ? plotInnerW / 2 : (i / (n - 1)) * plotInnerW);
   const normY = (v: number) => {
     const t = (v - yMin) / (yMax - yMin);
     return SPARK_PAD_T + (1 - t) * plotH;
   };
+
+  const columns: MetricChartColumn[] = series.map((p, index) => ({
+    index,
+    x: xAt(index),
+    dayKey: p.dayKey,
+    axisLabel: p.label,
+    value: p[valueKey] != null && !Number.isNaN(Number(p[valueKey])) ? Number(p[valueKey]) : null
+  }));
+
+  const dots: MetricChartDot[] = [];
+  for (const c of columns) {
+    if (c.value != null) {
+      dots.push({ index: c.index, x: c.x, y: normY(c.value), value: c.value });
+    }
+  }
+
+  const axisTicks: MetricChartAxisTick[] = pickAxisTickIndices(n).map(i => ({
+    index: i,
+    x: xAt(i),
+    label: series[i]?.label ?? ''
+  }));
 
   const segments: SparklineSegment[] = [];
   let run: { i: number; v: number }[] = [];
@@ -144,16 +271,16 @@ function buildMetricSparkline(
     let pts: SparkPt[] = run.map(r => ({ x: xAt(r.i), y: normY(r.v) }));
     if (pts.length === 1) {
       const p = pts[0];
-      const dx = Math.min(12, plotW * 0.04);
+      const dx = Math.min(12, plotInnerW * 0.04);
       pts = [
-        { x: Math.max(SPARK_PAD_L, p.x - dx / 2), y: p.y },
-        { x: Math.min(SPARK_W - SPARK_PAD_R, p.x + dx / 2), y: p.y }
+        { x: Math.max(axisLineX1, p.x - dx / 2), y: p.y },
+        { x: Math.min(axisLineX2, p.x + dx / 2), y: p.y }
       ];
     }
     const linePathD = catmullRomToBezierPath(pts);
     const first = pts[0];
     const last = pts[pts.length - 1];
-    const areaPathD = areaUnderSparkLine(linePathD, first, last);
+    const areaPathD = areaUnderSparkLine(linePathD, first, last, plotBottomY);
     segments.push({ linePathD, areaPathD });
     run = [];
   };
@@ -170,11 +297,27 @@ function buildMetricSparkline(
 
   return {
     segments,
+    columns,
+    dots,
+    axisTicks,
+    axisLineX1,
+    axisLineX2,
+    plotBottomY,
     yMin,
     yMax,
     hasData: segments.length > 0,
     avgValue
   };
+}
+
+/** Pointer feedback for one metric chart (HTML tooltip + SVG crosshair). */
+export interface MetricChartHoverUi {
+  columnIndex: number;
+  lineX: number;
+  anchorLeft: number;
+  anchorTop: number;
+  dateLine: string;
+  valueLine: string;
 }
 
 @Component({
@@ -191,6 +334,14 @@ export class PlanComponent {
   readonly catalog = inject(CatalogStore);
   private readonly destroyRef = inject(DestroyRef);
 
+  /** SVG viewBox size (shared by throughput + latency charts). */
+  readonly chartViewW = SPARK_W;
+  readonly chartViewH = SPARK_H;
+  readonly chartPadTop = SPARK_PAD_T;
+
+  readonly tpsChartHover = signal<MetricChartHoverUi | null>(null);
+  readonly ttftChartHover = signal<MetricChartHoverUi | null>(null);
+
   /** For nav “back to provider” while the shell is visible (before page data resolves). */
   readonly providerRouteSlug = toSignal(
     this.route.paramMap.pipe(map(p => p.get('providerId') ?? '')),
@@ -198,7 +349,8 @@ export class PlanComponent {
   );
 
   readonly metricWindowOptions = PLAN_METRIC_WINDOW_OPTIONS;
-  readonly selectedMetricWindowDays = signal<PlanMetricWindowDays>(14);
+  readonly throughputWindowDays = signal<PlanMetricWindowDays>(14);
+  readonly latencyWindowDays = signal<PlanMetricWindowDays>(14);
 
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -220,16 +372,18 @@ export class PlanComponent {
 
   readonly sparklinesByModel = computed(() => {
     const p = this.page();
-    const days = this.selectedMetricWindowDays();
+    const tpsDays = this.throughputWindowDays();
+    const ttftDays = this.latencyWindowDays();
     const mapById = new Map<string, { tps: MetricSparklineGeom; ttft: MetricSparklineGeom }>();
     if (!p) {
       return mapById;
     }
     for (const m of p.models) {
-      const slice = slicePlanSeriesByWindowDays(m.tpsSeries, days);
+      const tpsSlice = slicePlanSeriesByWindowDays(m.tpsSeries, tpsDays);
+      const ttftSlice = slicePlanSeriesByWindowDays(m.ttftSeries, ttftDays);
       mapById.set(m.modelId, {
-        tps: buildMetricSparkline(slice, 'avgTps'),
-        ttft: buildMetricSparkline(slice, 'avgTtftS')
+        tps: buildMetricSparkline(tpsSlice, 'avgTps'),
+        ttft: buildMetricSparkline(ttftSlice, 'avgTtftS')
       });
     }
     return mapById;
@@ -335,12 +489,19 @@ export class PlanComponent {
     this.selectedModelIndex.set(idx);
   }
 
-  selectMetricWindow(days: PlanMetricWindowDays): void {
-    this.selectedMetricWindowDays.set(days);
+  selectThroughputWindow(days: PlanMetricWindowDays): void {
+    this.throughputWindowDays.set(days);
+    this.tpsChartHover.set(null);
   }
 
+  selectLatencyWindow(days: PlanMetricWindowDays): void {
+    this.latencyWindowDays.set(days);
+    this.ttftChartHover.set(null);
+  }
+
+  /** Quantization rows follow the throughput card’s window (independent from latency). */
   quantRunsForWindow(model: PlanPerformanceModelBlock): PlanQuantRunRow[] {
-    return filterQuantRunsByWindow(model.quantRuns, this.selectedMetricWindowDays());
+    return filterQuantRunsByWindow(model.quantRuns, this.throughputWindowDays());
   }
 
   selectModelTab(index: number): void {
@@ -348,12 +509,93 @@ export class PlanComponent {
     if (!p || index < 0 || index >= p.models.length) {
       return;
     }
+    this.tpsChartHover.set(null);
+    this.ttftChartHover.set(null);
     const m = p.models[index];
     void this.router.navigate(['/directory', p.providerSlug, p.planSlug, m.modelSlug], { replaceUrl: true });
   }
 
   sparkFor(modelId: string): { tps: MetricSparklineGeom; ttft: MetricSparklineGeom } | undefined {
     return this.sparklinesByModel().get(modelId);
+  }
+
+  onTpsChartPointerMove(event: PointerEvent, geom: MetricSparklineGeom): void {
+    this.updateMetricChartHover(event, geom, 'tps', this.tpsChartHover);
+  }
+
+  onTpsChartPointerLeave(): void {
+    this.tpsChartHover.set(null);
+  }
+
+  onTtftChartPointerMove(event: PointerEvent, geom: MetricSparklineGeom): void {
+    this.updateMetricChartHover(event, geom, 'ttft', this.ttftChartHover);
+  }
+
+  onTtftChartPointerLeave(): void {
+    this.ttftChartHover.set(null);
+  }
+
+  private updateMetricChartHover(
+    event: PointerEvent,
+    geom: MetricSparklineGeom,
+    kind: 'tps' | 'ttft',
+    target: WritableSignal<MetricChartHoverUi | null>
+  ): void {
+    if (!geom.columns.length) {
+      target.set(null);
+      return;
+    }
+    const svg = event.currentTarget as SVGSVGElement;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) {
+      return;
+    }
+    const pt = svg.createSVGPoint();
+    pt.x = event.clientX;
+    pt.y = event.clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    const xSvg = local.x;
+
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < geom.columns.length; i++) {
+      const dist = Math.abs(geom.columns[i].x - xSvg);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+
+    const col = geom.columns[bestIdx];
+    const valueLine =
+      kind === 'tps'
+        ? col.value == null
+          ? 'No throughput sample'
+          : this.formatAvgTokPerS(col.value)
+        : col.value == null
+          ? 'No latency sample'
+          : this.formatTtft(col.value);
+
+    const wrap = svg.parentElement;
+    if (!wrap) {
+      return;
+    }
+    const wrect = wrap.getBoundingClientRect();
+    const tipW = 148;
+    const tipH = 40;
+    let anchorLeft = event.clientX - wrect.left + 12;
+    let anchorTop = event.clientY - wrect.top - 52;
+    anchorLeft = Math.min(Math.max(4, anchorLeft), Math.max(4, wrect.width - tipW - 4));
+    anchorTop = Math.min(Math.max(4, anchorTop), Math.max(4, wrect.height - tipH - 4));
+
+    target.set({
+      columnIndex: bestIdx,
+      lineX: col.x,
+      anchorLeft,
+      anchorTop,
+      dateLine: formatUtcDayTooltip(col.dayKey),
+      valueLine
+    });
   }
 
   formatAvgTokPerS(avg: number | null): string {
