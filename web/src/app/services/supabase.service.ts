@@ -71,7 +71,8 @@ export class SupabaseService {
 
   /**
    * Directory listing: nested providers → plans → plan_models → models; TPS/TTFT use **{@link DIRECTORY_ROLLING_WINDOW_DAYS}-day**
-   * rolling averages (UTC) on the directory and provider overview. Plan detail routes use {@link BENCHMARK_WINDOW_DAYS}-day runs for charts. **Quantization** from the **latest** run (any time) with non-null
+   * rolling averages (UTC) on the directory. Provider overview TPS/TTFT use **{@link BENCHMARK_WINDOW_DAYS}-day** averages.
+   * Plan detail charts load **{@link PLAN_PAGE_CHART_FETCH_DAYS}-day** daily buckets (UI can focus shorter windows). **Quantization** from the **latest** run (any time) with non-null
    * `quantization` for that plan+model. Also returns a map of prebuilt {@link PlanPerformancePage} entries so
    * plan routes can skip refetching after an in-app visit to the directory.
    * **Usage limits** column shows '—' until we surface `plan_models.usage_limit` again.
@@ -109,7 +110,7 @@ export class SupabaseService {
 
   /**
    * Plan page: one plan (by provider + plan slug), models on that plan, and benchmark runs from the last
-   * {@link BENCHMARK_WINDOW_DAYS} days (daily buckets for TPS / TTFT; quantization rows are individual runs).
+   * {@link PLAN_PAGE_CHART_FETCH_DAYS} days (daily buckets for TPS / TTFT; quantization rows are individual runs).
    */
   async fetchPlanPerformancePage(providerSlug: string, planSlug: string): Promise<PlanPerformancePage | null> {
     const { data: provider, error: providerError } = await this.supabase
@@ -144,7 +145,7 @@ export class SupabaseService {
       return null;
     }
 
-    const sinceIso = rollingWindowStartUtcIso(BENCHMARK_WINDOW_DAYS);
+    const sinceIso = rollingWindowStartUtcIso(PLAN_PAGE_CHART_FETCH_DAYS);
     const { data: runRows, error: runsError } = await this.supabase
       .from('benchmark_runs')
       .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
@@ -186,7 +187,7 @@ export class SupabaseService {
       };
     }
 
-    const sinceIso = rollingWindowStartUtcIso(BENCHMARK_WINDOW_DAYS);
+    const sinceIso = rollingWindowStartUtcIso(PLAN_PAGE_CHART_FETCH_DAYS);
 
     const [runsRes, quantRes, latestRes] = await Promise.all([
       this.supabase
@@ -221,7 +222,9 @@ export class SupabaseService {
     }
 
     const windowRuns = (runsRes.data ?? []) as BenchmarkRun[];
-    buildRollingWindowStatsIntoMap(windowRuns, statsByPlanModel);
+    const sinceProviderStatsIso = rollingWindowStartUtcIso(BENCHMARK_WINDOW_DAYS);
+    const providerStatsRuns = windowRuns.filter(r => r.run_at >= sinceProviderStatsIso);
+    buildRollingWindowStatsIntoMap(providerStatsRuns, statsByPlanModel);
     const sinceDirectoryIso = rollingWindowStartUtcIso(DIRECTORY_ROLLING_WINDOW_DAYS);
     const directoryRuns = windowRuns.filter(r => r.run_at >= sinceDirectoryIso);
     buildRollingWindowStatsIntoMap(directoryRuns, statsByPlanModelDirectory);
@@ -244,10 +247,13 @@ export class SupabaseService {
   }
 }
 
-/** Plan page charts, provider cards, and benchmark fetch window (UTC). */
+/** How far back we load runs for plan-page daily TPS/TTFT buckets (UTC). */
+const PLAN_PAGE_CHART_FETCH_DAYS = 60;
+
+/** Provider overview TPS/TTFT rolling average window (UTC); computed from fetched runs. */
 const BENCHMARK_WINDOW_DAYS = 30;
 
-/** Directory table TPS/TTFT averages only (subset of runs inside {@link BENCHMARK_WINDOW_DAYS}). */
+/** Directory table TPS/TTFT averages (subset of the {@link PLAN_PAGE_CHART_FETCH_DAYS}-day fetch). */
 export const DIRECTORY_ROLLING_WINDOW_DAYS = 14;
 
 interface PlanModelJunction {
@@ -397,7 +403,7 @@ function buildPlanPerformancePageFromRuns(
     return { ...baseMeta, models: [] };
   }
 
-  const dayMeta = lastNDayKeysUtc(BENCHMARK_WINDOW_DAYS);
+  const dayMeta = lastNDayKeysUtc(PLAN_PAGE_CHART_FETCH_DAYS);
   const models: PlanPerformanceModelBlock[] = junctions.map(pm => {
     const series = buildDaySeriesForModel(pm.model_id, runs, dayMeta);
     const quantRuns = buildQuantRunsForModel(pm.model_id, runs);

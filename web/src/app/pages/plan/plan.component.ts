@@ -7,9 +7,35 @@ import { BackToDirectoryLinkComponent } from '../../components/back-to-directory
 import { CatalogRefreshStripComponent } from '../../components/catalog-refresh-strip/catalog-refresh-strip.component';
 import { CatalogStore } from '../../services/catalog-store.service';
 import { SupabaseService } from '../../services/supabase.service';
-import type { PlanPerformanceDayPoint, PlanPerformancePage } from './plan.models';
+import type {
+  PlanPerformanceDayPoint,
+  PlanPerformanceModelBlock,
+  PlanPerformancePage,
+  PlanQuantRunRow
+} from './plan.models';
 
-const WINDOW_DAYS = 30;
+/** Selectable UTC day windows for plan throughput/latency charts (slice of loaded daily buckets). */
+export const PLAN_METRIC_WINDOW_OPTIONS = [3, 7, 14, 30, 60] as const;
+export type PlanMetricWindowDays = (typeof PLAN_METRIC_WINDOW_OPTIONS)[number];
+
+function rollingWindowStartUtcIso(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString();
+}
+
+function slicePlanSeriesByWindowDays(series: PlanPerformanceDayPoint[], days: number): PlanPerformanceDayPoint[] {
+  if (series.length === 0) {
+    return series;
+  }
+  const n = Math.min(Math.max(1, days), series.length);
+  return series.slice(-n);
+}
+
+function filterQuantRunsByWindow(runs: PlanQuantRunRow[], days: number): PlanQuantRunRow[] {
+  const since = rollingWindowStartUtcIso(days);
+  return runs.filter(r => r.runAtIso >= since);
+}
 
 // --- Sparkline geometry (SVG paths for plan metric cards) ---
 
@@ -171,7 +197,8 @@ export class PlanComponent {
     { initialValue: '' }
   );
 
-  readonly windowDays = WINDOW_DAYS;
+  readonly metricWindowOptions = PLAN_METRIC_WINDOW_OPTIONS;
+  readonly selectedMetricWindowDays = signal<PlanMetricWindowDays>(14);
 
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -193,14 +220,16 @@ export class PlanComponent {
 
   readonly sparklinesByModel = computed(() => {
     const p = this.page();
+    const days = this.selectedMetricWindowDays();
     const mapById = new Map<string, { tps: MetricSparklineGeom; ttft: MetricSparklineGeom }>();
     if (!p) {
       return mapById;
     }
     for (const m of p.models) {
+      const slice = slicePlanSeriesByWindowDays(m.tpsSeries, days);
       mapById.set(m.modelId, {
-        tps: buildMetricSparkline(m.tpsSeries, 'avgTps'),
-        ttft: buildMetricSparkline(m.ttftSeries, 'avgTtftS')
+        tps: buildMetricSparkline(slice, 'avgTps'),
+        ttft: buildMetricSparkline(slice, 'avgTtftS')
       });
     }
     return mapById;
@@ -304,6 +333,14 @@ export class PlanComponent {
       return;
     }
     this.selectedModelIndex.set(idx);
+  }
+
+  selectMetricWindow(days: PlanMetricWindowDays): void {
+    this.selectedMetricWindowDays.set(days);
+  }
+
+  quantRunsForWindow(model: PlanPerformanceModelBlock): PlanQuantRunRow[] {
+    return filterQuantRunsByWindow(model.quantRuns, this.selectedMetricWindowDays());
   }
 
   selectModelTab(index: number): void {
