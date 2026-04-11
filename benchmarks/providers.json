@@ -1,0 +1,16 @@
+{
+  "providers": [
+    {
+      "id": "alibaba-cloud-model-studio-coding-plan",
+      "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+      "api_key_env": "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY",
+      "models": [
+        "glm-5",
+        "kimi-k2.5",
+        "MiniMax-M2.5",
+        "qwen3-max-2026-01-23",
+        "qwen3-coder-plus"
+      ]
+    }
+  ]
+}
