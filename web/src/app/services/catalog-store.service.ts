@@ -9,7 +9,7 @@ import { SupabaseService } from './supabase.service';
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
 /** Bump when catalog payload shape or copy (e.g. billing period label) must refresh for all clients. */
-const SESSION_KEY = 'codingplans.catalog.v5';
+const SESSION_KEY = 'codingplans.catalog.v6';
 
 interface PersistedCatalogPayload {
   fetchedAt: number;

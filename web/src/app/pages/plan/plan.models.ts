@@ -6,6 +6,8 @@ export interface PlanPerformanceDayPoint {
   dayKey: string;
   /** Short axis label, e.g. 4/06 */
   label: string;
+  /** Latest benchmark `run_at` in this UTC day (for chart hover). */
+  latestRunAtIso: string | null;
   avgTps: number | null;
   avgTtftS: number | null;
 }

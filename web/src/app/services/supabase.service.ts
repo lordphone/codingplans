@@ -615,9 +615,9 @@ function buildDaySeriesForModel(
   runs: BenchmarkRun[],
   dayMeta: { key: string; label: string }[]
 ): PlanPerformanceDayPoint[] {
-  const byDay = new Map<string, { tps: number[]; ttft: number[] }>();
+  const byDay = new Map<string, { tps: number[]; ttft: number[]; latestAt: string | null }>();
   for (const { key } of dayMeta) {
-    byDay.set(key, { tps: [], ttft: [] });
+    byDay.set(key, { tps: [], ttft: [], latestAt: null });
   }
   for (const r of runs) {
     if (r.model_id !== modelId) {
@@ -627,6 +627,9 @@ function buildDaySeriesForModel(
     const bucket = byDay.get(dk);
     if (!bucket) {
       continue;
+    }
+    if (!bucket.latestAt || r.run_at.localeCompare(bucket.latestAt) > 0) {
+      bucket.latestAt = r.run_at;
     }
     if (r.tps != null && !Number.isNaN(Number(r.tps))) {
       bucket.tps.push(Number(r.tps));
@@ -639,7 +642,7 @@ function buildDaySeriesForModel(
     const b = byDay.get(key)!;
     const avgTps = b.tps.length > 0 ? b.tps.reduce((s, x) => s + x, 0) / b.tps.length : null;
     const avgTtftS = b.ttft.length > 0 ? b.ttft.reduce((s, x) => s + x, 0) / b.ttft.length : null;
-    return { dayKey: key, label, avgTps, avgTtftS };
+    return { dayKey: key, label, latestRunAtIso: b.latestAt, avgTps, avgTtftS };
   });
 }
 

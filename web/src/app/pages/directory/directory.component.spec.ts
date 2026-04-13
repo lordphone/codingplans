@@ -35,7 +35,7 @@ function plan(overrides: Partial<DirectoryPlan> = {}): DirectoryPlan {
     name: 'Starter Plan',
     subtitle: '',
     price: '$10',
-    period: '/ month',
+    period: '/ Month',
     modelRows: [row()],
     ...overrides
   };
@@ -62,7 +62,7 @@ describe('DirectoryComponent', () => {
             name: 'Basic',
             subtitle: 'For testing',
             price: '$20',
-            period: '/ month',
+            period: '/ Month',
             modelRows: [
               {
                 rowId: 'basic:gpt',
@@ -161,7 +161,7 @@ describe('DirectoryComponent', () => {
     const { fixture } = await setup({ providers: mockProviders() });
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Provider & Plan Directory');
+    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Directory');
     expect(el.textContent).toContain('Test Provider');
     expect(el.textContent).toContain('Tier');
     expect(el.textContent).toContain('Quantization');

@@ -57,6 +57,7 @@ interface MetricChartColumn {
   index: number;
   x: number;
   dayKey: string;
+  latestRunAtIso: string | null;
   axisLabel: string;
   value: number | null;
 }
@@ -156,20 +157,27 @@ function pickAxisTickIndices(n: number): number[] {
   return [...set].sort((a, b) => a - b);
 }
 
-/** `dayKey` is YYYY-MM-DD (UTC bucket). */
-function formatUtcDayTooltip(dayKey: string): string {
-  const [ys, ms, ds] = dayKey.split('-');
-  if (!ys || !ms || !ds) {
+/**
+ * Hover label: full UTC wall time to seconds (latest run in the day bucket, or start of UTC day if none).
+ */
+function formatMetricChartHoverTimestamp(dayKey: string, latestRunAtIso: string | null): string {
+  const iso = latestRunAtIso ?? `${dayKey}T00:00:00.000Z`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
     return dayKey;
   }
-  const y = Number(ys);
-  const m = Number(ms);
-  const d = Number(ds);
-  if (!y || !m || !d) {
-    return dayKey;
-  }
-  const month = new Date(Date.UTC(y, m - 1, d)).toLocaleString(undefined, { month: 'short', timeZone: 'UTC' });
-  return `${month} ${d}, ${y} (UTC)`;
+  return (
+    new Intl.DateTimeFormat(undefined, {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(d) + ' UTC'
+  );
 }
 
 function buildMetricSparkline(
@@ -244,6 +252,7 @@ function buildMetricSparkline(
     index,
     x: xAt(index),
     dayKey: p.dayKey,
+    latestRunAtIso: p.latestRunAtIso,
     axisLabel: p.label,
     value: p[valueKey] != null && !Number.isNaN(Number(p[valueKey])) ? Number(p[valueKey]) : null
   }));
@@ -581,8 +590,8 @@ export class PlanComponent {
       return;
     }
     const wrect = wrap.getBoundingClientRect();
-    const tipW = 148;
-    const tipH = 40;
+    const tipW = 220;
+    const tipH = 44;
     let anchorLeft = event.clientX - wrect.left + 12;
     let anchorTop = event.clientY - wrect.top - 52;
     anchorLeft = Math.min(Math.max(4, anchorLeft), Math.max(4, wrect.width - tipW - 4));
@@ -593,7 +602,7 @@ export class PlanComponent {
       lineX: col.x,
       anchorLeft,
       anchorTop,
-      dateLine: formatUtcDayTooltip(col.dayKey),
+      dateLine: formatMetricChartHoverTimestamp(col.dayKey, col.latestRunAtIso),
       valueLine
     });
   }

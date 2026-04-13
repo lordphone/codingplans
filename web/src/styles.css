@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+@layer base {
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
 @theme {
   --color-surface: #f9f9f9;
   --color-on-surface: #1a1c1c;
