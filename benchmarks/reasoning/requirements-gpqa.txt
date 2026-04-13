@@ -1,0 +1,7 @@
+# GPQA-Diamond via EleutherAI lm-evaluation-harness (optional; not part of root requirements.txt).
+# Install: pip install -r benchmarks/reasoning/requirements-gpqa.txt
+#
+# The GPQA dataset (Idavidrein/gpqa) is gated on Hugging Face — accept the license on the Hub,
+# then: huggingface-cli login   or   export HF_TOKEN=...
+
+lm-eval[api]==0.4.11
