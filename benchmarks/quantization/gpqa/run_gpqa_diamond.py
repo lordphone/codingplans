@@ -14,7 +14,7 @@ Optional: ``LLM_TIMEOUT_S`` (default 120). Only CLI flag: ``--limit N`` (smoke t
 
 Usage::
 
-  python benchmarks/reasoning/run_gpqa_diamond.py
+  python benchmarks/quantization/gpqa/run_gpqa_diamond.py
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _TASK = "gpqa_diamond_cot_zeroshot"
 _MODEL = "glm-5"
 _ANTHROPIC_MESSAGES_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages"
-_LM_EVAL_ENTRY = _REPO_ROOT / "benchmarks" / "reasoning" / "lm_eval_entry.py"
+_LM_EVAL_ENTRY = Path(__file__).resolve().parent / "lm_eval_entry.py"
 
 
 def _load_dotenv() -> None:

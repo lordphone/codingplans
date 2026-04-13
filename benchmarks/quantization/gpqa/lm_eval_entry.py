@@ -1,7 +1,7 @@
 """
 Patch Anthropic Messages parsing for DashScope (content may include thinking blocks), then run lm-eval CLI.
 
-Used by run_gpqa_diamond.py for ``LLM_PROVIDER=anthropic`` (not ``python -m lm_eval`` directly).
+Used by ``run_gpqa_diamond.py`` in this directory (not ``python -m lm_eval`` directly).
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

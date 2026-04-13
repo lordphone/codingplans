@@ -50,7 +50,7 @@ Use `benchmarks/providers.example.json` as a template; real `providers.json` is 
 ├── AGENTS.md
 ├── benchmarks/
 │   ├── performance/       # TPS / TTFT scripts (e.g. benchmark_tps.py, scenarios.py)
-│   ├── quantize/          # e.g. benchmark_quantize.py
+│   ├── quantization/      # benchmark_quantize.py; gpqa/ (GPQA-Diamond lm-eval runner)
 │   ├── providers.json     # gitignored
 │   └── providers.example.json
 ├── requirements.txt       # Python deps for benchmarks
