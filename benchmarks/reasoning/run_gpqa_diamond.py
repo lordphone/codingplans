@@ -9,14 +9,17 @@ Run GPQA-Diamond (lm-eval, batch size 1).
   LLM_BASE_URL=https://.../v1
   LLM_MODEL=kimi-k2.5
 
-**Anthropic** — set ``LLM_PROVIDER=anthropic`` and:
+**Anthropic Messages** (DashScope Coding intl proxy) — set ``LLM_PROVIDER=anthropic``:
 
   HF_TOKEN=...
-  ANTHROPIC_API_KEY=...
-  LLM_MODEL=claude-sonnet-4-20250514
+  CODING_PLAN_API_KEY=...   # same key works; or ANTHROPIC_API_KEY / LLM_API_KEY
+  LLM_MODEL=kimi-k2.5
 
-Optional: ``ANTHROPIC_BASE_URL`` (default ``https://api.anthropic.com/v1/messages``),
-``LLM_TIMEOUT_S`` (OpenAI-compat only; default 120). CLI: ``--limit N``, ``--model``.
+Optional: ``ANTHROPIC_BASE_URL`` (default Coding intl:
+``https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages``).
+For api.anthropic.com set ``ANTHROPIC_BASE_URL=https://api.anthropic.com/v1/messages``.
+
+``LLM_TIMEOUT_S`` (default 120). CLI: ``--limit N``, ``--model``.
 
 Usage::
 
@@ -34,7 +37,9 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TASK = "gpqa_diamond_cot_zeroshot"
 _TOKENIZER = "Qwen/Qwen2.5-7B-Instruct"
-_DEFAULT_ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
+# DashScope Anthropic-compatible Messages (Coding Plan intl); must include ``/v1/messages``.
+_DEFAULT_ANTHROPIC_BASE_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages"
+_LM_EVAL_ENTRY = _REPO_ROOT / "benchmarks" / "reasoning" / "lm_eval_entry.py"
 
 
 def _load_dotenv() -> None:
@@ -53,7 +58,7 @@ def _first_env(*names: str) -> str:
     return ""
 
 
-def _build_openai_compat_cmd(model: str, timeout: int) -> tuple[list[str], str]:
+def _build_openai_compat_cmd(model: str, timeout: int) -> list[str]:
     api_key = _first_env("CODING_PLAN_API_KEY", "LLM_API_KEY", "OPENAI_API_KEY")
     if not api_key:
         sys.exit("Set CODING_PLAN_API_KEY, LLM_API_KEY, or OPENAI_API_KEY.")
@@ -75,7 +80,7 @@ def _build_openai_compat_cmd(model: str, timeout: int) -> tuple[list[str], str]:
             f"timeout={timeout}",
         ]
     )
-    cmd: list[str] = [
+    return [
         sys.executable,
         "-m",
         "lm_eval",
@@ -92,14 +97,16 @@ def _build_openai_compat_cmd(model: str, timeout: int) -> tuple[list[str], str]:
         "temperature=0",
         "--apply_chat_template",
     ]
-    return cmd, model_args
 
 
 def _build_anthropic_cmd(model: str, timeout: int) -> tuple[list[str], str]:
-    if not _first_env("ANTHROPIC_API_KEY"):
-        sys.exit("LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY.")
+    key = _first_env("ANTHROPIC_API_KEY", "CODING_PLAN_API_KEY", "LLM_API_KEY")
+    if not key:
+        sys.exit(
+            "LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY, CODING_PLAN_API_KEY, or LLM_API_KEY."
+        )
 
-    base_url = _first_env("ANTHROPIC_BASE_URL") or _DEFAULT_ANTHROPIC_MESSAGES_URL
+    base_url = _first_env("ANTHROPIC_BASE_URL") or _DEFAULT_ANTHROPIC_BASE_URL
     model_args = ",".join(
         [
             f"model={model}",
@@ -108,10 +115,10 @@ def _build_anthropic_cmd(model: str, timeout: int) -> tuple[list[str], str]:
             f"timeout={timeout}",
         ]
     )
+    # Patched entry: DashScope returns thinking + text content blocks; stock lm-eval expects only text.
     cmd: list[str] = [
         sys.executable,
-        "-m",
-        "lm_eval",
+        str(_LM_EVAL_ENTRY),
         "run",
         "--model",
         "anthropic-chat-completions",
@@ -125,7 +132,7 @@ def _build_anthropic_cmd(model: str, timeout: int) -> tuple[list[str], str]:
         "temperature=0",
         "--apply_chat_template",
     ]
-    return cmd, model_args
+    return cmd, key
 
 
 def main() -> int:
@@ -145,19 +152,20 @@ def main() -> int:
     except ValueError:
         timeout = 120
 
+    env = os.environ.copy()
+    env.setdefault("LMEVAL_LOG_LEVEL", "ERROR")
+
     provider = _first_env("LLM_PROVIDER").lower()
     if provider == "anthropic":
-        cmd, _ = _build_anthropic_cmd(model, timeout)
+        cmd, anthropic_key = _build_anthropic_cmd(model, timeout)
+        env["ANTHROPIC_API_KEY"] = anthropic_key
     else:
-        cmd, _ = _build_openai_compat_cmd(model, timeout)
+        cmd = _build_openai_compat_cmd(model, timeout)
 
     if args.limit is not None:
         cmd.extend(["--limit", str(args.limit)])
 
-    env = os.environ.copy()
-    env.setdefault("LMEVAL_LOG_LEVEL", "ERROR")
-
-    return subprocess.run(cmd, env=env).returncode
+    return subprocess.run(cmd, env=env, cwd=str(_REPO_ROOT)).returncode
 
 
 if __name__ == "__main__":
