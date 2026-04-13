@@ -3,14 +3,14 @@
 Run GPQA-Diamond (lm-eval, batch size 1) on Alibaba Coding Plan intl **Anthropic Messages** API.
 
 Hardcoded in this file: model ``glm-5``, endpoint
-``https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages``.
+``https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages``, HTTP timeout **120** s.
 
 Repo-root ``.env``:
 
   HF_TOKEN=...   # Hugging Face (gated GPQA dataset)
-  ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY=...   # same as benchmarks/providers.json (``x-api-key``)
+  ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY=...   # ``x-api-key`` (same name as ``providers.json``)
 
-Optional: ``LLM_TIMEOUT_S`` (default 120). Only CLI flag: ``--limit N`` (smoke tests).
+Only CLI flag: ``--limit N`` (smoke tests).
 
 Usage::
 
@@ -30,6 +30,7 @@ _TASK = "gpqa_diamond_cot_zeroshot"
 _MODEL = "glm-5"
 _ANTHROPIC_MESSAGES_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages"
 _LM_EVAL_ENTRY = Path(__file__).resolve().parent / "lm_eval_entry.py"
+_TIMEOUT_S = 120
 
 
 def _load_dotenv() -> None:
@@ -38,14 +39,6 @@ def _load_dotenv() -> None:
     except ImportError:
         return
     load_dotenv(_REPO_ROOT / ".env", override=False)
-
-
-def _first_env(*names: str) -> str:
-    for n in names:
-        v = os.environ.get(n, "").strip()
-        if v:
-            return v
-    return ""
 
 
 def main() -> int:
@@ -57,27 +50,16 @@ def main() -> int:
     if unknown:
         sys.exit(f"Unknown arguments: {' '.join(unknown)}. Only --limit is supported.")
 
-    key = _first_env(
-        "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "LLM_API_KEY",
-    )
+    key = os.environ.get("ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY", "").strip()
     if not key:
-        sys.exit(
-            "Set ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY (or ANTHROPIC_API_KEY / LLM_API_KEY) in .env."
-        )
-
-    try:
-        timeout = int(os.environ.get("LLM_TIMEOUT_S", "120"))
-    except ValueError:
-        timeout = 120
+        sys.exit("Set ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY in .env.")
 
     model_args = ",".join(
         [
             f"model={_MODEL}",
             f"base_url={_ANTHROPIC_MESSAGES_URL}",
             "max_gen_toks=2048",
-            f"timeout={timeout}",
+            f"timeout={_TIMEOUT_S}",
         ]
     )
 
