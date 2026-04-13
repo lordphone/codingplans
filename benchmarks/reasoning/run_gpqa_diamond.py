@@ -6,7 +6,8 @@ Prerequisites
 -------------
 1. pip install -r benchmarks/reasoning/requirements-gpqa.txt
 2. Hugging Face: the task pulls ``Idavidrein/gpqa`` (gated). Accept the license on the Hub,
-   then ``huggingface-cli login`` or set ``HF_TOKEN``.
+   then ``huggingface-cli login`` or set ``HF_TOKEN`` (or ``HUGGING_FACE_HUB_TOKEN``).
+   You can put it in the repo-root ``.env``; this script loads that file if ``python-dotenv`` is installed.
 3. Model API key in the environment (e.g. ``OPENAI_API_KEY`` for ``openai-chat-completions``).
 
 Examples
@@ -36,9 +37,20 @@ from __future__ import annotations
 import argparse
 import shlex
 import sys
+from pathlib import Path
 
 
 DEFAULT_TASK = "gpqa_diamond_cot_zeroshot"
+
+
+def _load_repo_dotenv() -> None:
+    """Load repo-root ``.env`` so ``HF_TOKEN`` / ``OPENAI_API_KEY`` work without manual export."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    root = Path(__file__).resolve().parents[2]
+    load_dotenv(root / ".env", override=False)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -116,6 +128,7 @@ def _quote_cmd(argv: list[str]) -> str:
 
 
 def main() -> int:
+    _load_repo_dotenv()
     args = _build_parser().parse_args()
 
     model_arg_parts = [f"model={args.model}", "max_gen_toks=2048"]

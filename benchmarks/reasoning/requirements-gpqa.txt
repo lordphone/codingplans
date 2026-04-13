@@ -5,3 +5,4 @@
 # then: huggingface-cli login   or   export HF_TOKEN=...
 
 lm-eval[api]==0.4.11
+python-dotenv>=1.0,<2
