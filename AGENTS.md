@@ -42,11 +42,14 @@ python benchmarks/performance/benchmark_tps.py --config benchmarks/providers.jso
 
 Use `benchmarks/providers.example.json` as a template; real `providers.json` is gitignored.
 
+Copy `.env.example` → `.env` for local secrets (`HF_TOKEN`, `CODING_PLAN_API_KEY`, etc.); `.env` is gitignored.
+
 ## Project layout (repo)
 
 ```
 .
 ├── .github/workflows/     # e.g. deploy.yml → GitHub Pages
+├── .env.example           # template for repo-root .env (benchmarks; not committed secrets)
 ├── AGENTS.md
 ├── benchmarks/
 │   ├── performance/       # TPS / TTFT scripts (e.g. benchmark_tps.py, scenarios.py)
