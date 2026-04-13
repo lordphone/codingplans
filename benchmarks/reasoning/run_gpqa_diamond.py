@@ -10,7 +10,7 @@ Repo-root ``.env``:
   HF_TOKEN=...                 # Hugging Face (gated GPQA dataset)
   CODING_PLAN_API_KEY=...      # or ANTHROPIC_API_KEY / LLM_API_KEY (``x-api-key``)
 
-Optional: ``LLM_TIMEOUT_S`` (default 120). CLI: ``--limit N`` for smoke tests.
+Optional: ``LLM_TIMEOUT_S`` (default 120). Only CLI flag: ``--limit N`` (smoke tests).
 
 Usage::
 
@@ -51,9 +51,11 @@ def _first_env(*names: str) -> str:
 def main() -> int:
     _load_dotenv()
 
-    p = argparse.ArgumentParser(description="Run GPQA-Diamond (glm-5 @ DashScope Anthropic Messages).")
-    p.add_argument("--limit", "-L", type=int, default=None, metavar="N", help="Cap documents (testing only)")
-    args = p.parse_args()
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--limit", type=int, default=None, metavar="N")
+    args, unknown = p.parse_known_args()
+    if unknown:
+        sys.exit(f"Unknown arguments: {' '.join(unknown)}. Only --limit is supported.")
 
     key = _first_env("CODING_PLAN_API_KEY", "ANTHROPIC_API_KEY", "LLM_API_KEY")
     if not key:
