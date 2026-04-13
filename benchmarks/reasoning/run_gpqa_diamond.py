@@ -1,142 +1,126 @@
 #!/usr/bin/env python3
 """
-Run GPQA-Diamond through lm-evaluation-harness using sequential API calls (batch size 1).
+Run GPQA-Diamond (lm-eval, batch size 1) against one OpenAI-compatible endpoint from
+``benchmarks/providers.json`` (copy from ``providers.example.json``).
 
-Prerequisites
--------------
-1. From repo root: ``pip install -r requirements.txt`` (same ``.venv`` as other benchmarks).
-2. Hugging Face: the task pulls ``Idavidrein/gpqa`` (gated). Accept the license on the Hub,
-   then ``huggingface-cli login`` or set ``HF_TOKEN`` (or ``HUGGING_FACE_HUB_TOKEN``).
-   You can put it in the repo-root ``.env``; this script loads that file if ``python-dotenv`` is installed.
-3. Model API key in the environment (e.g. ``OPENAI_API_KEY`` for ``openai-chat-completions``).
+Needs: repo-root ``.env`` with ``HF_TOKEN`` and the provider's ``api_key_env`` (e.g. ``CODING_PLAN_API_KEY``).
 
-Examples
---------
-  # Smoke test (no API calls; still needs HF access to download GPQA)
-  python benchmarks/reasoning/run_gpqa_diamond.py --limit 1 --dry-run
+Usage (from repo root):
 
-  # OpenAI Chat Completions (CoT zero-shot; matches generate_until GPQA setup)
-  export OPENAI_API_KEY=...
-  export HF_TOKEN=...  # if not already logged in via CLI
-  python benchmarks/reasoning/run_gpqa_diamond.py --model gpt-4o-mini
+  python benchmarks/reasoning/run_gpqa_diamond.py
 
-  # OpenAI-compatible base URL (LM Studio, LiteLLM proxy, etc.)
-  python benchmarks/reasoning/run_gpqa_diamond.py \\
-      --model-type local-chat-completions \\
-      --model qwen2.5 \\
-      --model-args 'base_url=http://127.0.0.1:1234/v1/chat/completions,tokenized_requests=False,tokenizer_backend=huggingface,tokenizer=Qwen/Qwen2.5-7B-Instruct' \\
-      --auth-token sk-...
-
-Note: ``openai-chat-completions`` does not support loglikelihood; use CoT / generative GPQA tasks,
-not ``gpqa_diamond_zeroshot`` (multiple choice), with chat APIs. Default task is
-``gpqa_diamond_cot_zeroshot``.
+Optional: ``--config``, ``--provider ID``, ``--model NAME``, ``--limit N``.
 """
 
 from __future__ import annotations
 
 import argparse
-import shlex
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_CONFIG = _REPO_ROOT / "benchmarks" / "providers.json"
+_TASK = "gpqa_diamond_cot_zeroshot"
+# Chat template for lm-eval only; API still receives your real ``model`` id.
+_TOKENIZER = "Qwen/Qwen2.5-7B-Instruct"
 
-DEFAULT_TASK = "gpqa_diamond_cot_zeroshot"
 
-
-def _load_repo_dotenv() -> None:
-    """Load repo-root ``.env`` so ``HF_TOKEN`` / ``OPENAI_API_KEY`` work without manual export."""
+def _load_dotenv() -> None:
     try:
         from dotenv import load_dotenv
     except ImportError:
         return
-    root = Path(__file__).resolve().parents[2]
-    load_dotenv(root / ".env", override=False)
+    load_dotenv(_REPO_ROOT / ".env", override=False)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__.split("Examples", 1)[0].strip())
-    p.add_argument(
-        "--model",
-        "-m",
-        default="gpt-4o-mini",
-        help="Model id passed to lm-eval (e.g. gpt-4o-mini, claude-3-5-sonnet-20241022).",
-    )
-    p.add_argument(
-        "--model-type",
-        "-M",
-        default="openai-chat-completions",
-        help="lm-eval model type (default: openai-chat-completions).",
-    )
-    p.add_argument(
-        "--model-args",
-        "-a",
-        default="",
-        help="Extra lm-eval model_args as one shell-style string, e.g. "
-        "'base_url=http://localhost:8000/v1/chat/completions,tokenized_requests=False'.",
-    )
-    p.add_argument(
-        "--task",
-        "-t",
-        default=DEFAULT_TASK,
-        help=f"lm-eval task name (default: {DEFAULT_TASK}).",
-    )
-    p.add_argument(
-        "--limit",
-        "-L",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Only first N documents per task (testing only).",
-    )
-    p.add_argument(
-        "--output-path",
-        "-o",
-        default="",
-        help="lm-eval --output_path (dir or .json).",
-    )
-    p.add_argument(
-        "--log-samples",
-        "-s",
-        action="store_true",
-        help="Save model outputs (--log_samples).",
-    )
-    p.add_argument(
-        "--gen-kwargs",
-        default="temperature=0",
-        help="Generation kwargs for lm-eval, e.g. temperature=0",
-    )
-    p.add_argument(
-        "--no-apply-chat-template",
-        action="store_true",
-        help="Omit --apply_chat_template (not recommended for chat API models).",
-    )
-    p.add_argument(
-        "--auth-token",
-        default="",
-        help="Appended as auth_token=... to model_args (OpenAI-compatible servers).",
-    )
-    p.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the lm-eval command and exit without running.",
-    )
-    return p
+def _pick_endpoint(
+    data: dict,
+    *,
+    provider_id: str | None,
+    model_name: str | None,
+) -> tuple[str, str, str, int]:
+    providers = data.get("providers")
+    if not isinstance(providers, list) or not providers:
+        sys.exit('Config needs a non-empty "providers" array.')
 
+    if provider_id:
+        prov = next((p for p in providers if isinstance(p, dict) and p.get("id") == provider_id), None)
+        if prov is None:
+            sys.exit(f'No provider with id "{provider_id}".')
+    else:
+        prov = next((p for p in providers if isinstance(p, dict)), None)
+        if prov is None:
+            sys.exit("No valid provider object in config.")
 
-def _quote_cmd(argv: list[str]) -> str:
-    return " ".join(shlex.quote(x) for x in argv)
+    pid = str(prov.get("id", "?"))
+    base_url = prov.get("base_url")
+    key_env = prov.get("api_key_env")
+    models = prov.get("models")
+    if not base_url or not key_env:
+        sys.exit(f'Provider "{pid}" needs base_url and api_key_env.')
+    if not isinstance(models, list) or not models:
+        sys.exit(f'Provider "{pid}" needs a non-empty models list.')
+
+    api_key = os.environ.get(str(key_env), "").strip()
+    if not api_key:
+        sys.exit(f"Set {key_env} in your environment or .env file.")
+
+    if model_name:
+        if model_name not in [str(m) for m in models]:
+            sys.exit(f'Model "{model_name}" not listed under provider "{pid}".')
+        model = model_name
+    else:
+        model = str(models[0])
+
+    chat_url = str(base_url).rstrip("/") + "/chat/completions"
+    timeout = int(prov.get("timeout_s", data.get("timeout_s", 120)))
+    return model, chat_url, api_key, timeout
 
 
 def main() -> int:
-    _load_repo_dotenv()
-    args = _build_parser().parse_args()
+    _load_dotenv()
 
-    model_arg_parts = [f"model={args.model}", "max_gen_toks=2048"]
-    if args.model_args.strip():
-        model_arg_parts.append(args.model_args.strip())
-    if args.auth_token.strip():
-        model_arg_parts.append(f"auth_token={args.auth_token.strip()}")
-    model_args_str = ",".join(model_arg_parts)
+    p = argparse.ArgumentParser(description="Run GPQA-Diamond via providers.json + lm-eval.")
+    p.add_argument(
+        "--config",
+        "-c",
+        default=str(_DEFAULT_CONFIG),
+        help=f"JSON config (default: {_DEFAULT_CONFIG})",
+    )
+    p.add_argument("--provider", "-p", default=None, metavar="ID", help="Provider id (default: first)")
+    p.add_argument("--model", "-m", default=None, metavar="NAME", help="Model name (default: first listed)")
+    p.add_argument("--limit", "-L", type=int, default=None, metavar="N", help="Cap documents (testing)")
+    args = p.parse_args()
+
+    cfg_path = Path(args.config)
+    if not cfg_path.is_absolute():
+        cfg_path = _REPO_ROOT / cfg_path
+    if not cfg_path.is_file():
+        sys.exit(f"Config not found: {cfg_path}\nCopy benchmarks/providers.example.json to benchmarks/providers.json")
+
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        sys.exit("Config must be a JSON object.")
+
+    model, chat_url, api_key, timeout = _pick_endpoint(
+        data, provider_id=args.provider, model_name=args.model
+    )
+
+    model_args = ",".join(
+        [
+            f"model={model}",
+            f"base_url={chat_url}",
+            f"auth_token={api_key}",
+            "tokenized_requests=False",
+            "tokenizer_backend=huggingface",
+            f"tokenizer={_TOKENIZER}",
+            "max_gen_toks=2048",
+            f"timeout={timeout}",
+        ]
+    )
 
     cmd: list[str] = [
         sys.executable,
@@ -144,36 +128,21 @@ def main() -> int:
         "lm_eval",
         "run",
         "--model",
-        args.model_type,
+        "local-chat-completions",
         "--model_args",
-        model_args_str,
+        model_args,
         "--tasks",
-        args.task,
+        _TASK,
         "--batch_size",
         "1",
         "--gen_kwargs",
-        args.gen_kwargs,
+        "temperature=0",
+        "--apply_chat_template",
     ]
-    if not args.no_apply_chat_template:
-        cmd.append("--apply_chat_template")
     if args.limit is not None:
         cmd.extend(["--limit", str(args.limit)])
-    if args.output_path:
-        cmd.extend(["--output_path", args.output_path])
-    if args.log_samples:
-        cmd.append("--log_samples")
 
-    log_cmd = _quote_cmd(cmd)
-    if args.auth_token.strip():
-        log_cmd = log_cmd.replace(args.auth_token.strip(), "<redacted>")
-    print(log_cmd, file=sys.stderr)
-    if args.dry_run:
-        return 0
-
-    import subprocess
-
-    proc = subprocess.run(cmd)
-    return int(proc.returncode)
+    return subprocess.run(cmd).returncode
 
 
 if __name__ == "__main__":
