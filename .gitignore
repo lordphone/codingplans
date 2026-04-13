@@ -14,9 +14,6 @@ __pycache__/
 venv/
 env/
 
-# Local benchmark matrix (copy from benchmarks/providers.example.json)
-benchmarks/providers.json
-
 # Environment & secrets (use env templates; never commit keys)
 .env
 .env.local
