@@ -7,8 +7,8 @@ Hardcoded in this file: model ``glm-5``, endpoint
 
 Repo-root ``.env``:
 
-  HF_TOKEN=...                 # Hugging Face (gated GPQA dataset)
-  CODING_PLAN_API_KEY=...      # or ANTHROPIC_API_KEY / LLM_API_KEY (``x-api-key``)
+  HF_TOKEN=...   # Hugging Face (gated GPQA dataset)
+  ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY=...   # same as benchmarks/providers.json (``x-api-key``)
 
 Optional: ``LLM_TIMEOUT_S`` (default 120). Only CLI flag: ``--limit N`` (smoke tests).
 
@@ -57,9 +57,15 @@ def main() -> int:
     if unknown:
         sys.exit(f"Unknown arguments: {' '.join(unknown)}. Only --limit is supported.")
 
-    key = _first_env("CODING_PLAN_API_KEY", "ANTHROPIC_API_KEY", "LLM_API_KEY")
+    key = _first_env(
+        "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "LLM_API_KEY",
+    )
     if not key:
-        sys.exit("Set CODING_PLAN_API_KEY (or ANTHROPIC_API_KEY / LLM_API_KEY) in .env.")
+        sys.exit(
+            "Set ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY (or ANTHROPIC_API_KEY / LLM_API_KEY) in .env."
+        )
 
     try:
         timeout = int(os.environ.get("LLM_TIMEOUT_S", "120"))

@@ -44,7 +44,7 @@ python benchmarks/quantization/gpqa/run_gpqa_diamond.py   # optional; GPQA-Diamo
 
 Reads **`benchmarks/providers.json`** (tracked in git): provider slug, API base URL, `api_key_env`, and model ids. Workload text comes from **`benchmarks/performance/scenarios.py`**, not this file. API keys stay in **`.env`** or CI secrets. Use **`check_credentials.py`** to confirm keys are loaded from `.env` without pasting them into `curl`.
 
-Copy `.env.example` → `.env` for local secrets (`HF_TOKEN`, `CODING_PLAN_API_KEY`, etc.); `.env` is gitignored.
+Copy `.env.example` → `.env` for local secrets (`HF_TOKEN`, `ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY`, etc.); `.env` is gitignored.
 
 ## Project layout (repo)
 
