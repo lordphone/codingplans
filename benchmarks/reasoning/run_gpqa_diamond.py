@@ -104,7 +104,11 @@ def main() -> int:
     if args.limit is not None:
         cmd.extend(["--limit", str(args.limit)])
 
-    return subprocess.run(cmd).returncode
+    env = os.environ.copy()
+    # lm-eval otherwise logs model_args at INFO (includes auth_token).
+    env.setdefault("LMEVAL_LOG_LEVEL", "ERROR")
+
+    return subprocess.run(cmd, env=env).returncode
 
 
 if __name__ == "__main__":
