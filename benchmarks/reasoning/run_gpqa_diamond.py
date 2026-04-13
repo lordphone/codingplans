@@ -4,7 +4,7 @@ Run GPQA-Diamond through lm-evaluation-harness using sequential API calls (batch
 
 Prerequisites
 -------------
-1. pip install -r benchmarks/reasoning/requirements-gpqa.txt
+1. From repo root: ``pip install -r requirements.txt`` (same ``.venv`` as other benchmarks).
 2. Hugging Face: the task pulls ``Idavidrein/gpqa`` (gated). Accept the license on the Hub,
    then ``huggingface-cli login`` or set ``HF_TOKEN`` (or ``HUGGING_FACE_HUB_TOKEN``).
    You can put it in the repo-root ``.env``; this script loads that file if ``python-dotenv`` is installed.
