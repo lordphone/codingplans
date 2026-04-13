@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
 """
-Run GPQA-Diamond (lm-eval, batch size 1) against one OpenAI-compatible endpoint from
-``benchmarks/providers.json`` (copy from ``providers.example.json``).
+Run GPQA-Diamond (lm-eval, batch size 1) against your OpenAI-compatible API.
 
-Needs: repo-root ``.env`` with ``HF_TOKEN`` and the provider's ``api_key_env`` (e.g. ``CODING_PLAN_API_KEY``).
+Put in repo-root ``.env`` (or export):
 
-Usage (from repo root):
+  HF_TOKEN=...                         # Hugging Face (gated GPQA dataset)
+  CODING_PLAN_API_KEY=...              # or LLM_API_KEY / OPENAI_API_KEY
+  LLM_BASE_URL=https://.../v1          # no /chat/completions suffix
+  LLM_MODEL=glm-5                      # provider model id
+
+Optional env: ``LLM_TIMEOUT_S`` (default 120). Optional CLI: ``--limit N``, ``--model`` overrides ``LLM_MODEL``.
+
+Usage::
 
   python benchmarks/reasoning/run_gpqa_diamond.py
-
-Optional: ``--config``, ``--provider ID``, ``--model NAME``, ``--limit N``.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_CONFIG = _REPO_ROOT / "benchmarks" / "providers.json"
 _TASK = "gpqa_diamond_cot_zeroshot"
-# Chat template for lm-eval only; API still receives your real ``model`` id.
 _TOKENIZER = "Qwen/Qwen2.5-7B-Instruct"
 
 
@@ -36,79 +37,40 @@ def _load_dotenv() -> None:
     load_dotenv(_REPO_ROOT / ".env", override=False)
 
 
-def _pick_endpoint(
-    data: dict,
-    *,
-    provider_id: str | None,
-    model_name: str | None,
-) -> tuple[str, str, str, int]:
-    providers = data.get("providers")
-    if not isinstance(providers, list) or not providers:
-        sys.exit('Config needs a non-empty "providers" array.')
-
-    if provider_id:
-        prov = next((p for p in providers if isinstance(p, dict) and p.get("id") == provider_id), None)
-        if prov is None:
-            sys.exit(f'No provider with id "{provider_id}".')
-    else:
-        prov = next((p for p in providers if isinstance(p, dict)), None)
-        if prov is None:
-            sys.exit("No valid provider object in config.")
-
-    pid = str(prov.get("id", "?"))
-    base_url = prov.get("base_url")
-    key_env = prov.get("api_key_env")
-    models = prov.get("models")
-    if not base_url or not key_env:
-        sys.exit(f'Provider "{pid}" needs base_url and api_key_env.')
-    if not isinstance(models, list) or not models:
-        sys.exit(f'Provider "{pid}" needs a non-empty models list.')
-
-    api_key = os.environ.get(str(key_env), "").strip()
-    if not api_key:
-        sys.exit(f"Set {key_env} in your environment or .env file.")
-
-    if model_name:
-        if model_name not in [str(m) for m in models]:
-            sys.exit(f'Model "{model_name}" not listed under provider "{pid}".')
-        model = model_name
-    else:
-        model = str(models[0])
-
-    chat_url = str(base_url).rstrip("/") + "/chat/completions"
-    timeout = int(prov.get("timeout_s", data.get("timeout_s", 120)))
-    return model, chat_url, api_key, timeout
+def _first_env(*names: str) -> str:
+    for n in names:
+        v = os.environ.get(n, "").strip()
+        if v:
+            return v
+    return ""
 
 
 def main() -> int:
     _load_dotenv()
 
-    p = argparse.ArgumentParser(description="Run GPQA-Diamond via providers.json + lm-eval.")
-    p.add_argument(
-        "--config",
-        "-c",
-        default=str(_DEFAULT_CONFIG),
-        help=f"JSON config (default: {_DEFAULT_CONFIG})",
-    )
-    p.add_argument("--provider", "-p", default=None, metavar="ID", help="Provider id (default: first)")
-    p.add_argument("--model", "-m", default=None, metavar="NAME", help="Model name (default: first listed)")
+    p = argparse.ArgumentParser(description="Run GPQA-Diamond via .env + lm-eval.")
+    p.add_argument("--model", "-m", default=None, help="Override LLM_MODEL")
     p.add_argument("--limit", "-L", type=int, default=None, metavar="N", help="Cap documents (testing)")
     args = p.parse_args()
 
-    cfg_path = Path(args.config)
-    if not cfg_path.is_absolute():
-        cfg_path = _REPO_ROOT / cfg_path
-    if not cfg_path.is_file():
-        sys.exit(f"Config not found: {cfg_path}\nCopy benchmarks/providers.example.json to benchmarks/providers.json")
+    api_key = _first_env("CODING_PLAN_API_KEY", "LLM_API_KEY", "OPENAI_API_KEY")
+    if not api_key:
+        sys.exit("Set CODING_PLAN_API_KEY, LLM_API_KEY, or OPENAI_API_KEY.")
 
-    data = json.loads(cfg_path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        sys.exit("Config must be a JSON object.")
+    base = _first_env("LLM_BASE_URL", "CODING_PLAN_BASE_URL")
+    if not base:
+        sys.exit("Set LLM_BASE_URL (or CODING_PLAN_BASE_URL), e.g. https://coding-intl.dashscope.aliyuncs.com/v1")
 
-    model, chat_url, api_key, timeout = _pick_endpoint(
-        data, provider_id=args.provider, model_name=args.model
-    )
+    model = (args.model or "").strip() or _first_env("LLM_MODEL", "CODING_PLAN_MODEL")
+    if not model:
+        sys.exit("Set LLM_MODEL (or CODING_PLAN_MODEL), or pass --model.")
 
+    try:
+        timeout = int(os.environ.get("LLM_TIMEOUT_S", "120"))
+    except ValueError:
+        timeout = 120
+
+    chat_url = base.rstrip("/") + "/chat/completions"
     model_args = ",".join(
         [
             f"model={model}",
