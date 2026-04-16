@@ -12,6 +12,8 @@ Repo-root ``.env``:
 
 Only CLI flag: ``--limit N`` (smoke tests).
 
+Per-question progress (question sent, waiting for LLM, received, parsed vs gold RIGHT/WRONG) is printed on stderr by ``lm_eval_entry.py`` unless ``GPQA_DEBUG=0`` (or ``false`` / ``no`` / ``off``).
+
 Usage::
 
   python benchmarks/quantization/gpqa/run_gpqa_diamond.py
