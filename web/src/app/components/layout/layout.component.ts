@@ -16,7 +16,7 @@ import { CatalogStore } from '../../services/catalog-store.service';
         <div class="min-w-0 flex-1">
           <a
             routerLink="/"
-            class="block truncate text-lg font-light uppercase tracking-[0.35em] text-zinc-900 sm:text-xl sm:tracking-[0.5em]"
+            class="block truncate text-lg font-light uppercase tracking-[0.35em] text-primary sm:text-xl sm:tracking-[0.5em]"
           >
             CODING PLAN COMPARISON
           </a>
@@ -24,16 +24,16 @@ import { CatalogStore } from '../../services/catalog-store.service';
         <div class="flex shrink-0 items-center gap-8 sm:gap-12">
           <a
             routerLink="/directory"
-            routerLinkActive="border-b border-zinc-900 text-zinc-900"
+            routerLinkActive="border-b border-primary text-primary"
             [routerLinkActiveOptions]="{ exact: true }"
-            class="font-['Inter'] pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-zinc-900"
+            class="font-['Inter'] pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-primary"
           >
             DIRECTORY
           </a>
           <a
             routerLink="/benchmarks"
-            routerLinkActive="border-b border-zinc-900 text-zinc-900"
-            class="font-['Inter'] pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-zinc-900"
+            routerLinkActive="border-b border-primary text-primary"
+            class="font-['Inter'] pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-primary"
           >
             BENCHMARKS
           </a>

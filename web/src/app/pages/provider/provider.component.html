@@ -17,7 +17,7 @@
   </p>
 } @else if (providerPage(); as vm) {
   <div class="mb-8">
-    <h1 class="text-3xl font-semibold tracking-tight text-zinc-900 md:text-4xl">
+    <h1 class="text-3xl font-semibold tracking-tight text-primary md:text-4xl">
       {{ vm.providerName }}
     </h1>
     <p class="mt-2 font-mono text-xs text-zinc-500">Last updated · {{ vm.lastUpdated }}</p>
@@ -42,12 +42,12 @@
               <div class="mb-2 flex flex-wrap items-baseline content-start gap-x-3 gap-y-1">
                 <a
                   [routerLink]="['/directory', providerSlug, plan.id, plan.models[0].id]"
-                  class="min-w-0 shrink text-xl font-semibold leading-tight tracking-tight text-zinc-900 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
+                  class="min-w-0 shrink text-xl font-semibold leading-tight tracking-tight text-primary underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-accent-interactive hover:decoration-accent-interactive/35"
                 >
                   {{ plan.name }}
                 </a>
                 <div class="flex shrink-0 flex-wrap items-baseline gap-x-2 tabular-nums text-zinc-800">
-                  <span class="font-mono text-lg font-normal tabular-nums text-zinc-900">{{ plan.price }}</span>
+                  <span class="font-mono text-lg font-normal tabular-nums text-primary">{{ plan.price }}</span>
                   <span class="font-mono text-[10px] tracking-wide text-zinc-500">{{ plan.period }}</span>
                 </div>
               </div>
@@ -62,10 +62,10 @@
                   </div>
                 }
                 <div>
-                  <p class="mb-3 text-sm font-semibold text-zinc-900">
+                  <p class="mb-3 text-sm font-semibold text-primary">
                     <a
                       [routerLink]="['/directory', providerSlug, plan.id, row.id]"
-                      class="text-zinc-900 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
+                      class="text-primary underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-accent-interactive hover:decoration-accent-interactive/35"
                     >
                       {{ row.name }}
                     </a>
@@ -78,13 +78,13 @@
                       <div class="flex items-center gap-2">
                         <span
                           class="h-2.5 w-2.5 shrink-0"
-                          [class.bg-red-700]="row.quantizationColor === 'tertiary'"
-                          [class.bg-emerald-600]="row.quantizationColor === 'secondary'"
+                          [class.bg-tertiary]="row.quantizationColor === 'tertiary'"
+                          [class.bg-secondary]="row.quantizationColor === 'secondary'"
                           [class.bg-zinc-400]="row.quantizationColor === 'neutral'"></span>
                         <span
                           class="font-mono text-[0.7rem] font-bold uppercase"
-                          [class.text-red-700]="row.quantizationColor === 'tertiary'"
-                          [class.text-emerald-600]="row.quantizationColor === 'secondary'"
+                          [class.text-tertiary]="row.quantizationColor === 'tertiary'"
+                          [class.text-secondary]="row.quantizationColor === 'secondary'"
                           [class.text-zinc-500]="row.quantizationColor === 'neutral'">
                           {{ row.quantization }}
                         </span>
@@ -94,7 +94,7 @@
                       <div class="mb-1 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
                         TPS
                       </div>
-                      <div class="font-mono text-[0.7rem] font-bold tabular-nums uppercase text-zinc-900">
+                      <div class="font-mono text-[0.7rem] font-bold tabular-nums uppercase text-primary">
                         {{ row.tps }}
                       </div>
                     </div>
@@ -102,7 +102,7 @@
                       <div class="mb-1 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-zinc-500">
                         TTFT
                       </div>
-                      <div class="font-mono text-[0.7rem] font-medium tabular-nums text-zinc-900">
+                      <div class="font-mono text-[0.7rem] font-medium tabular-nums text-primary">
                         {{ row.ttft }}
                       </div>
                     </div>
@@ -126,7 +126,7 @@
     <div class="mt-16 border border-zinc-300 p-8 flex flex-col md:flex-row justify-between items-start gap-8">
       <div class="max-w-xl">
         <h4 class="font-mono text-[0.75rem] font-bold mb-4 flex items-center gap-2 uppercase">
-          <svg class="h-4 w-4 shrink-0 text-emerald-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="h-4 w-4 shrink-0 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             <path d="m9 12 2 2 4-4" />
           </svg>
@@ -142,15 +142,15 @@
       <div class="flex flex-col gap-2 min-w-[200px]">
         <div class="flex justify-between border-b border-zinc-300 pb-1">
           <span class="font-mono text-[0.65rem] text-zinc-500 uppercase">STATUS</span>
-          <span class="font-mono text-[0.65rem] font-bold text-emerald-600 uppercase">VERIFIED PASS</span>
+          <span class="font-mono text-[0.65rem] font-bold text-secondary uppercase">VERIFIED PASS</span>
         </div>
         <div class="flex justify-between border-b border-zinc-300 pb-1">
           <span class="font-mono text-[0.65rem] text-zinc-500 uppercase">LATENCY AUDIT</span>
-          <span class="font-mono text-[0.65rem] font-bold text-emerald-600 uppercase">OK</span>
+          <span class="font-mono text-[0.65rem] font-bold text-secondary uppercase">OK</span>
         </div>
         <div class="flex justify-between border-b border-zinc-300 pb-1">
           <span class="font-mono text-[0.65rem] text-zinc-500 uppercase">TOKEN RELIABILITY</span>
-          <span class="font-mono text-[0.65rem] font-bold text-emerald-600 uppercase">99.98%</span>
+          <span class="font-mono text-[0.65rem] font-bold text-secondary uppercase">99.98%</span>
         </div>
       </div>
     </div>

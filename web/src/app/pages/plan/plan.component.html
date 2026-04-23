@@ -4,7 +4,7 @@
       @if (providerRouteSlug()) {
         <a
           [routerLink]="['/directory', providerRouteSlug()]"
-          class="inline-block font-mono text-[11px] uppercase tracking-wider text-zinc-500 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
+          class="inline-block font-mono text-[11px] uppercase tracking-wider text-zinc-500 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-accent-interactive hover:decoration-accent-interactive/35"
         >
           ← Back to provider details
         </a>
@@ -29,19 +29,19 @@
   <p class="mb-8 font-mono text-sm text-zinc-600">No plan matches this URL.</p>
 } @else {
   @if (page(); as vm) {
-  <div class="font-sans text-zinc-900">
+  <div class="font-sans text-primary">
     <header class="mb-0">
       <p class="text-sm leading-snug">
         <a
           [routerLink]="['/directory', vm.providerSlug]"
-          class="font-medium text-zinc-600 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-emerald-700 hover:decoration-emerald-500/35"
+          class="font-medium text-zinc-600 underline decoration-1 decoration-zinc-200 underline-offset-2 transition-colors hover:text-accent-interactive hover:decoration-accent-interactive/35"
         >
           {{ vm.providerName }}
         </a>
       </p>
       <div class="py-8 md:py-10">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h1 class="text-3xl font-semibold tracking-tight text-zinc-900 md:text-4xl">
+          <h1 class="text-3xl font-semibold tracking-tight text-primary md:text-4xl">
             {{ vm.planName }}
           </h1>
           <span class="font-mono text-lg font-normal tabular-nums text-zinc-800">{{ vm.priceLabel }}</span>
@@ -65,9 +65,9 @@
               [attr.aria-selected]="selectedModelIndex() === idx"
               (click)="selectModelTab(idx)"
               class="-mb-px border-b-2 border-transparent pb-3.5 pt-2 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
-              [class.border-zinc-900]="selectedModelIndex() === idx"
+              [class.border-primary]="selectedModelIndex() === idx"
               [class.font-semibold]="selectedModelIndex() === idx"
-              [class.text-zinc-900]="selectedModelIndex() === idx"
+              [class.text-primary]="selectedModelIndex() === idx"
               [class.font-normal]="selectedModelIndex() !== idx"
               [class.text-zinc-500]="selectedModelIndex() !== idx"
               [class.hover:text-zinc-700]="selectedModelIndex() !== idx"
@@ -116,17 +116,17 @@
                             <div class="flex items-start gap-2">
                               <span
                                 class="min-w-0 flex-1 text-xs font-medium uppercase leading-snug"
-                                [class.text-emerald-700]="row.status === 'verified'"
-                                [class.text-red-800]="row.status === 'scam'"
+                                [class.text-secondary]="row.status === 'verified'"
+                                [class.text-tertiary]="row.status === 'scam'"
                                 >{{ row.label }}</span>
                               <span
                                 class="mt-1 h-2.5 w-2.5 shrink-0 rounded-[1px]"
-                                [class.bg-emerald-600]="row.status === 'verified'"
-                                [class.bg-red-700]="row.status === 'scam'"
+                                [class.bg-secondary]="row.status === 'verified'"
+                                [class.bg-tertiary]="row.status === 'scam'"
                               ></span>
                             </div>
                             @if (showsQuantizationLossNotice(row.label, row.status)) {
-                              <span class="text-[10px] font-medium uppercase tracking-wide text-red-800">Loss detected</span>
+                              <span class="text-[10px] font-medium uppercase tracking-wide text-tertiary">Loss detected</span>
                             }
                           </div>
                         </td>
@@ -156,8 +156,8 @@
                       type="button"
                       (click)="selectThroughputWindow(d)"
                       class="min-w-[2.75rem] rounded-none border px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
-                      [class.border-zinc-900]="throughputWindowDays() === d"
-                      [class.bg-zinc-900]="throughputWindowDays() === d"
+                      [class.border-primary]="throughputWindowDays() === d"
+                      [class.bg-primary]="throughputWindowDays() === d"
                       [class.text-white]="throughputWindowDays() === d"
                       [class.border-zinc-200]="throughputWindowDays() !== d"
                       [class.bg-white]="throughputWindowDays() !== d"
@@ -185,7 +185,7 @@
                       [style.top.px]="tTip.anchorTop"
                     >
                       <div class="font-mono text-[9px] leading-tight text-zinc-500">{{ tTip.dateLine }}</div>
-                      <div class="mt-0.5 font-medium tabular-nums leading-tight text-zinc-900">{{ tTip.valueLine }}</div>
+                      <div class="mt-0.5 font-medium tabular-nums leading-tight text-primary">{{ tTip.valueLine }}</div>
                     </div>
                   }
                   <svg
@@ -199,8 +199,8 @@
                   >
                     <defs>
                       <linearGradient [id]="gradTps" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.12" />
-                        <stop offset="100%" stop-color="#14b8a6" stop-opacity="0" />
+                        <stop offset="0%" [attr.style]="'stop-color: var(--color-chart-throughput); stop-opacity: 0.12'" />
+                        <stop offset="100%" [attr.style]="'stop-color: var(--color-chart-throughput); stop-opacity: 0'" />
                       </linearGradient>
                     </defs>
                     <line
@@ -208,7 +208,7 @@
                       [attr.y1]="sp.tps.plotBottomY"
                       [attr.x2]="sp.tps.axisLineX2"
                       [attr.y2]="sp.tps.plotBottomY"
-                      stroke="#d4d4d8"
+                      stroke="var(--color-chart-grid)"
                       stroke-width="1"
                       vector-effect="non-scaling-stroke"
                     />
@@ -218,9 +218,9 @@
                         [attr.y]="chartViewH - 5"
                         dominant-baseline="alphabetic"
                         text-anchor="middle"
-                        fill="#71717a"
+                        fill="var(--color-chart-tick)"
                         class="select-none"
-                        style="font-size: 9px; font-family: ui-monospace, monospace"
+                        style="font-size: 9px; font-family: var(--font-mono), ui-monospace, monospace"
                       >
                         {{ tick.label }}
                       </text>
@@ -233,7 +233,7 @@
                         <path
                           [attr.d]="seg.linePathD"
                           fill="none"
-                          stroke="#14b8a6"
+                          stroke="var(--color-chart-throughput)"
                           stroke-width="1.75"
                           stroke-linecap="round"
                           stroke-linejoin="round"
@@ -247,7 +247,7 @@
                         [attr.y1]="chartPadTop"
                         [attr.x2]="tH.lineX"
                         [attr.y2]="sp.tps.plotBottomY"
-                        stroke="#71717a"
+                        stroke="var(--color-chart-tick)"
                         stroke-width="1"
                         stroke-dasharray="4 3"
                         vector-effect="non-scaling-stroke"
@@ -260,7 +260,7 @@
                         [attr.cy]="dot.y"
                         [attr.r]="tpsChartHover()?.columnIndex === dot.index ? 3.75 : 3"
                         fill="#ffffff"
-                        stroke="#14b8a6"
+                        stroke="var(--color-chart-throughput)"
                         [attr.stroke-width]="tpsChartHover()?.columnIndex === dot.index ? 1.75 : 1.25"
                         vector-effect="non-scaling-stroke"
                       />
@@ -276,7 +276,7 @@
               <div class="mt-auto flex min-h-12 shrink-0 items-center justify-between pt-3 text-sm">
                 @if (sp && sp.tps.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
-                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-emerald-600"></span>
+                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-chart-throughput"></span>
                     <span class="truncate">{{ model.modelName }}</span>
                   </span>
                   <span class="shrink-0 text-zinc-500">
@@ -299,8 +299,8 @@
                       type="button"
                       (click)="selectLatencyWindow(d)"
                       class="min-w-[2.75rem] rounded-none border px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
-                      [class.border-zinc-900]="latencyWindowDays() === d"
-                      [class.bg-zinc-900]="latencyWindowDays() === d"
+                      [class.border-primary]="latencyWindowDays() === d"
+                      [class.bg-primary]="latencyWindowDays() === d"
                       [class.text-white]="latencyWindowDays() === d"
                       [class.border-zinc-200]="latencyWindowDays() !== d"
                       [class.bg-white]="latencyWindowDays() !== d"
@@ -328,7 +328,7 @@
                       [style.top.px]="lTip.anchorTop"
                     >
                       <div class="font-mono text-[9px] leading-tight text-zinc-500">{{ lTip.dateLine }}</div>
-                      <div class="mt-0.5 font-medium tabular-nums leading-tight text-zinc-900">{{ lTip.valueLine }}</div>
+                      <div class="mt-0.5 font-medium tabular-nums leading-tight text-primary">{{ lTip.valueLine }}</div>
                     </div>
                   }
                   <svg
@@ -342,8 +342,8 @@
                   >
                     <defs>
                       <linearGradient [id]="gradTtft" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.12" />
-                        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
+                        <stop offset="0%" [attr.style]="'stop-color: var(--color-chart-latency); stop-opacity: 0.12'" />
+                        <stop offset="100%" [attr.style]="'stop-color: var(--color-chart-latency); stop-opacity: 0'" />
                       </linearGradient>
                     </defs>
                     <line
@@ -351,7 +351,7 @@
                       [attr.y1]="sp.ttft.plotBottomY"
                       [attr.x2]="sp.ttft.axisLineX2"
                       [attr.y2]="sp.ttft.plotBottomY"
-                      stroke="#d4d4d8"
+                      stroke="var(--color-chart-grid)"
                       stroke-width="1"
                       vector-effect="non-scaling-stroke"
                     />
@@ -361,9 +361,9 @@
                         [attr.y]="chartViewH - 5"
                         dominant-baseline="alphabetic"
                         text-anchor="middle"
-                        fill="#71717a"
+                        fill="var(--color-chart-tick)"
                         class="select-none"
-                        style="font-size: 9px; font-family: ui-monospace, monospace"
+                        style="font-size: 9px; font-family: var(--font-mono), ui-monospace, monospace"
                       >
                         {{ tick.label }}
                       </text>
@@ -376,7 +376,7 @@
                         <path
                           [attr.d]="seg.linePathD"
                           fill="none"
-                          stroke="#3b82f6"
+                          stroke="var(--color-chart-latency)"
                           stroke-width="1.75"
                           stroke-linecap="round"
                           stroke-linejoin="round"
@@ -390,7 +390,7 @@
                         [attr.y1]="chartPadTop"
                         [attr.x2]="lH.lineX"
                         [attr.y2]="sp.ttft.plotBottomY"
-                        stroke="#71717a"
+                        stroke="var(--color-chart-tick)"
                         stroke-width="1"
                         stroke-dasharray="4 3"
                         vector-effect="non-scaling-stroke"
@@ -403,7 +403,7 @@
                         [attr.cy]="dot.y"
                         [attr.r]="ttftChartHover()?.columnIndex === dot.index ? 3.75 : 3"
                         fill="#ffffff"
-                        stroke="#3b82f6"
+                        stroke="var(--color-chart-latency)"
                         [attr.stroke-width]="ttftChartHover()?.columnIndex === dot.index ? 1.75 : 1.25"
                         vector-effect="non-scaling-stroke"
                       />
@@ -419,7 +419,7 @@
               <div class="mt-auto flex min-h-12 shrink-0 items-center justify-between pt-3 text-sm">
                 @if (sp && sp.ttft.hasData) {
                   <span class="flex min-w-0 items-center gap-2 text-zinc-700">
-                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-blue-600"></span>
+                    <span class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px] bg-chart-latency"></span>
                     <span class="truncate">{{ model.modelName }}</span>
                   </span>
                   <span class="shrink-0 text-zinc-500">

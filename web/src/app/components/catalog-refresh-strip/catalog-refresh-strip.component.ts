@@ -12,7 +12,7 @@ import { CatalogStore } from '../../services/catalog-store.service';
       </span>
       <button
         type="button"
-        class="rounded-none border border-zinc-300 bg-white px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-700 shadow-sm transition-colors hover:border-emerald-600 hover:text-emerald-800 disabled:opacity-50"
+        class="rounded-none border border-zinc-300 bg-white px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wide text-zinc-700 shadow-sm transition-colors hover:border-accent-interactive hover:text-primary disabled:opacity-50"
         [disabled]="catalog.loading()"
         (click)="onRefresh()"
       >

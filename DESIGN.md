@@ -13,13 +13,23 @@ colors:
   outline: "#777777"
   outline-variant: "#c6c6c6"
   accent-interactive: "#059669"
+  chart-throughput: "#059669"
+  chart-latency: "#2563eb"
+  chart-grid: "#d4d4d8"
+  chart-tick: "#71717a"
 typography:
-  h1:
+  h1-display:
     fontFamily: Inter
     fontSize: 3.5rem
     fontWeight: 800
     lineHeight: 1
     letterSpacing: -0.05em
+  h1-entity:
+    fontFamily: Inter
+    fontSize: 2.25rem
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: -0.025em
   brand-wordmark:
     fontFamily: Inter
     fontSize: 1.25rem
@@ -75,34 +85,39 @@ components:
 
 ## Overview
 
-**Coding Plan Comparison** (Brand & style) is a read-only, technical **directory** of AI coding plans and models. The UI should feel **institutional and data-forward**: high contrast, monospace for data and metadata, restrained green and red semantic accents, no decorative illustration.
+**Coding Plan Comparison** (Brand & style) is a read-only, technical **directory** of AI coding plans and models. The UI should feel **institutional and data-forward**: high contrast, monospace for data and metadata, semantic greens and burgundy from theme `secondary` / `tertiary`, and **no** decorative illustration.
 
-This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification/)**: YAML above is **normative** for tokens; sections below are **rationale**. Stack, routes, and data are **not** defined here; see [AGENTS.md](AGENTS.md). Implement tokens in [web/src/styles.css](web/src/styles.css) (`@theme`).
+This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification/)**: YAML above is **normative**; sections below are **rationale**. Stack, routes, and data are **not** defined here; see [AGENTS.md](AGENTS.md). **Source of truth in code:** [web/src/styles.css](web/src/styles.css) (`@theme`); this document stays aligned with that file.
 
 ## Colors
 
-**Neutrals-first:** white top bar, zinc-scale borders, off-white **surface** for the main area. **Emerald** is the single interactive accent (focus, key links). **Burgundy** and theme **secondary/tertiary** support semantic states. Chrome uses **Tailwind `zinc`** for inactive nav and dividers. Errors use a light **red** surface, dark red text, and a clear border.
+**Neutrals-first:** white top bar, **zinc** borders for chrome, off-white **surface** for the main area. **Primary** (`#18181b`, ink) is the default for titles and `text-primary` in the app. **Accent-interactive** (`#059669`) is the **UI** accent: link hovers, search focus, refresh hover border. **Secondary** and **tertiary** are semantic (verified / scam-style states), not the same as the blue latency chart. **Chart** line colors are separate tokens so **throughput** and **latency** stay distinguishable. Errors use a light **red** surface, dark red text, and a clear border. Chrome uses **Tailwind `zinc`** for inactive nav and many dividers.
 
-- **Primary (ink):** Headlines and primary table text.
-- **Surface / on-surface:** Page background and default copy.
-- **Cards:** White panels on surface; table outer wrap reads as one card.
-- **Accent:** Emerald for focus rings and primary links; use sparingly.
+- **primary / on-surface / surface:** Core text, background, and panels (see `components` in front matter and `@theme`).
+- **chart-throughput:** Same hue as `accent-interactive` — TPS time-series and legend.
+- **chart-latency:** Blue — TTFT time-series and legend (second series, not a third UI accent).
+- **chart-grid / chart-tick:** Axes and tick labels in SVGs.
 
 ### Design tokens
 
-The `colors` map in the front matter is canonical; keep `@theme` in `styles.css` in sync when tokens change.
+The `colors` map matches **`@theme` in** `web/src/styles.css`. When you change a token, update both places.
 
 ## Typography
 
-**Inter** for UI, display headings, and navigation. **JetBrains Mono** for version strings, slugs, search field, “RESULTS” counts, and auxiliary technical lines. The main directory title is **large, uppercase, tight display**. Nav links and column headers use **small uppercase** with **letter-spaced** caps for a catalog / spec aesthetic.
+**Inter** for UI, navigation, and headings. **JetBrains Mono** for version, slugs, search field, “RESULTS”, and technical lines. There are two **H1** levels:
+
+- **Display (h1-display):** **Directory**, **Benchmarks**, **Models** — `3.5rem`, extrabold, uppercase, tight tracking.
+- **Entity (h1-entity):** **Provider** and **Plan** page titles (dynamic names) — `text-3xl` / `md:text-4xl`, semibold, sentence case, because long provider/plan names should not be forced to all-caps.
+
+Nav links and table column headers use **small caps** (uppercase, letter-spaced). Nav link and `version` patterns match `nav-link` and `version-badge` in the front matter.
 
 ### Design tokens
 
-See `typography` in the front matter: `h1`, `brand-wordmark`, `nav-link`, `body-mono`, `version-badge`.
+See `typography` in the front matter: `h1-display`, `h1-entity`, `brand-wordmark`, `nav-link`, `body-mono`, `version-badge`.
 
 ## Layout
 
-**Shell:** Full-height column; **fixed** top **navigation**; scrollable **main** below with top padding for the bar height and generous horizontal padding (`main-padding` / `nav-height` in tokens). **No sidebar** in the main shell. **Directory:** full-width content; the comparison table uses **fixed column weights** so the grid stays stable; search is full-width with a trailing result count.
+**Shell:** Full-height column; **fixed** top **navigation**; **main** below with `nav-height` top padding and `main-padding` horizontal padding. **No sidebar.** The directory table uses **fixed column** weights; search is full-width with a trailing result count.
 
 ### Design tokens
 
@@ -110,11 +125,11 @@ See `spacing` in the front matter.
 
 ## Elevation & Depth
 
-Hierarchy is **flat**: rely on **borders** and **typographic weight** more than deep shadow. **Table** blocks get a **light shadow** and **tight corner radius** so the grid reads as one card on the surface. The **top bar** is white with a **bottom border** only.
+Hierarchy is **flat**: **borders** and type weight, not deep shadow. **Table** blocks get **`shadow-sm`** and **tight** radius so the grid reads as one **card** on the surface. The **top bar** is white with a **bottom border** only.
 
 ## Shapes
 
-**Tight, engineered** corners: small radius on the directory table card; **rectangular** inputs with visible strokes (not pill-shaped). Rounding stays **subtle** and consistent with the `rounded` tokens.
+**Tight, engineered** corners: **`rounded-sm`** on table cards; **rectangular** inputs and chart window toggles; no pill search fields. See `rounded` in the front matter.
 
 ### Design tokens
 
@@ -122,20 +137,22 @@ See `rounded` in the front matter.
 
 ## Components
 
-- **Top navigation:** Wordmark (wide letter-spacing) on the left; two primary text links; **version** in mono after a vertical rule. **Active** link: full-contrast text and a **bottom border** marker.
-- **Directory table:** Bordered, lightly elevated **card**; clear header row; performance cells may use compact bar or sparkline affordances; tier and model names link inward.
-- **Search:** Monospace field; **focus** state uses the accent color on the border; result count as small meta on the right.
-- **Refresh strip:** Inline control for cache / freshness without blocking the table.
-- **Inline errors:** Bordered alert block; pair with `role="alert"` in implementation.
+- **Top navigation:** Wordmark; **DIRECTORY** / **BENCHMARKS**; version in mono. Active link: **`text-primary`** and **bottom border** (see [layout](web/src/app/components/layout/layout.component.ts)).
+- **Directory table:** Bordered **card**; TPS minibar fill uses **primary**; links use `hover:` **accent-interactive** and matching underline.
+- **Search:** `focus:border-accent-interactive`.
+- **Refresh strip:** `catalog-refresh-strip` — `hover:border-accent-interactive` and `hover:text-primary` on the button.
+- **Plan metrics charts:** Strokes and fills use CSS variables from `@theme` (`--color-chart-throughput`, `--color-chart-latency`, grid, tick).
+- **Inline errors:** Bordered alert; use `role="alert"` in markup.
 
 ### Design tokens
 
-See `components` in the front matter (references `colors`, `typography`, `rounded` as needed).
+See `components` in the front matter.
 
 ## Do's and Don'ts
 
-- Do use **one** interactive accent (emerald) and **zinc** neutrals for structure.
-- Do pair **Inter** with **JetBrains Mono** for data; do not add a third typeface.
-- Do keep **body text** comfortably readable; make error states **obvious**, not timid.
-- Do not mix **pill** fields and **sharp** table cards in the same screen without a documented rule.
-- Do not use **color alone** for status (e.g. quantization or performance); always include **text** or pattern.
+- Do use **`text-primary`**, **`bg-primary`**, **`border-primary`** for “ink” interactive states; pair with **zinc** for de-emphasized structure.
+- Do use **`text-accent-interactive`**, **`border-accent-interactive`**, and **`bg-chart-throughput` / `bg-chart-latency`** only where the implementation maps to these roles (not arbitrary extra hues).
+- Do pair **Inter** with **JetBrains Mono**; do not add a third typeface.
+- Do keep error states high-contrast and obvious.
+- Do not mix **pill** inputs and **sharp** table cards without a system rule.
+- Do not use **color alone** for status; always include **text** (e.g. labels, “Loss detected”).

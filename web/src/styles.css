@@ -10,8 +10,11 @@
 }
 
 @theme {
-  --color-surface: #f9f9f9;
+  /* Align with DESIGN.md front matter; see repo root DESIGN.md */
+  --color-primary: #18181b;
   --color-on-surface: #1a1c1c;
+  --color-neutral: #f4f4f5;
+  --color-surface: #f9f9f9;
   --color-surface-container: #eeeeee;
   --color-surface-container-low: #f3f3f4;
   --color-surface-container-high: #e8e8e8;
@@ -20,7 +23,13 @@
   --color-tertiary: #7c0022;
   --color-outline: #777777;
   --color-outline-variant: #c6c6c6;
-  
+  --color-accent-interactive: #059669;
+  /* Datavis: TPS = accent; TTFT = second series (keeps charts distinguishable) */
+  --color-chart-throughput: #059669;
+  --color-chart-latency: #2563eb;
+  --color-chart-grid: #d4d4d8;
+  --color-chart-tick: #71717a;
+
   --font-sans: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
