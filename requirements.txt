@@ -1,5 +1,2 @@
 httpx>=0.27,<1
 python-dotenv>=1.0,<2
-lm-eval[api]==0.4.11
-transformers>=4.40,<5
-anthropic>=0.40,<1

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Model quality / quantization benchmark for coding plan providers.
+Placeholder entrypoint for future coding-plan model-quality checks.
 
-TODO: Implement quality tests such as:
+Planned directions (not implemented):
   - Code completion accuracy (HumanEval-style pass@k)
   - Instruction-following fidelity
-  - Quantization degradation checks (full vs quantized output diff)
+  - Full vs degraded output diff (see benchmarks/fidelity/weights/)
 """
 
 from __future__ import annotations
