@@ -16,7 +16,7 @@ This file exposes:
 Usage:
   python benchmarks/fidelity/weights/test_arithmetic.py --endpoint glm5-official
   python benchmarks/fidelity/weights/test_arithmetic.py --endpoint glm5-alibaba
-  python benchmarks/fidelity/weights/compare.py runs/<ref>.summary.json runs/<target>.summary.json
+  python benchmarks/fidelity/compare.py runs/<ref>.summary.json runs/<target>.summary.json
 """
 
 from __future__ import annotations

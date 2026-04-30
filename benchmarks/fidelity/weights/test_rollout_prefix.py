@@ -16,7 +16,7 @@ The comparator fails when `inter / intra_floor < 0.5`.
 Usage:
   python benchmarks/fidelity/weights/test_rollout_prefix.py --endpoint glm5-official --n 10 --max-tokens 2000
   python benchmarks/fidelity/weights/test_rollout_prefix.py --endpoint glm5-alibaba --n 10 --max-tokens 2000
-  python benchmarks/fidelity/weights/compare.py runs/<ref>.summary.json runs/<target>.summary.json
+  python benchmarks/fidelity/compare.py runs/<ref>.summary.json runs/<target>.summary.json
 
 Outputs land under benchmarks/fidelity/weights/runs/.
 """

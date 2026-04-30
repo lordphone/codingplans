@@ -23,10 +23,9 @@ pause reads on the wire like a developer poking at unrelated questions.
 from __future__ import annotations
 
 import json
-import os
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -94,8 +93,6 @@ class ChatResponse:
     completion_tokens: int | None
     finish_reason: str | None
     latency_s: float
-    raw_status: int = 200
-    extra: dict[str, Any] = field(default_factory=dict)
 
 
 def _delta_content(delta: dict[str, Any]) -> str | None:
@@ -280,11 +277,3 @@ class StealthChatClient:
             finish_reason=finish_reason,
             latency_s=last_content_at - started,
         )
-
-
-# Tiny helper so other modules can read env without re-importing os everywhere.
-def _env(name: str) -> str | None:
-    v = os.environ.get(name)
-    if v is not None and v.strip():
-        return v.strip()
-    return None

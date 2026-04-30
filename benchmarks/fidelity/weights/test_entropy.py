@@ -13,7 +13,7 @@ target/reference entropy ratio and fails if a majority of prompts exceed
 Usage:
   python benchmarks/fidelity/weights/test_entropy.py --endpoint glm5-official --n 50
   python benchmarks/fidelity/weights/test_entropy.py --endpoint glm5-alibaba --n 50
-  python benchmarks/fidelity/weights/compare.py runs/<ref>.summary.json runs/<target>.summary.json
+  python benchmarks/fidelity/compare.py runs/<ref>.summary.json runs/<target>.summary.json
 """
 
 from __future__ import annotations
