@@ -14,7 +14,8 @@ import type {
   ProviderPagePlan,
   ProviderPageQuantColor
 } from '../pages/provider/provider.models';
-import type { BenchmarkRun, ProviderWithPlansAndModels } from '../types/database.types';
+import type { BenchmarkRun } from '../types/database.types';
+import type { ProviderWithPlansAndModels } from '../types/database.shapes';
 import { formatTtftSeconds } from '../shared/format-metrics';
 import { PLAN_BILLING_PERIOD_LABEL } from '../shared/plan-billing';
 

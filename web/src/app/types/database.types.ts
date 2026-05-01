@@ -1,4 +1,8 @@
-/** Row shapes for Supabase `public.*` tables (UUIDs as strings in JSON). */
+/**
+ * Row shapes for Supabase `public.*` tables.
+ * Will be replaced by `supabase gen types typescript --linked` (npm run db:types) once linked.
+ * Keep only DB-table interfaces here; embed/derived shapes live in `database.shapes.ts`.
+ */
 
 export interface Provider {
   id: string;
@@ -28,18 +32,16 @@ export interface Model {
   description: string | null;
 }
 
-/** Junction: which models are included in a plan. */
 export interface PlanModel {
   plan_id: string;
   model_id: string;
-  /** Free-form usage limit copy for this plan+model (optional in API embeds). */
   usage_limit?: string | null;
 }
 
 /**
- * One benchmark run for a plan + model (wide metrics, Option B).
- * Nullable metric columns = not measured on this run.
- * `aggressively_quantized` is boolean: true = sub-8-bit quant detected, false = standard (>=8-bit), null = untested.
+ * One benchmark run for a plan + model (wide metrics).
+ * `aggressively_quantized` is boolean: true = sub-8-bit quant detected,
+ * false = standard (>=8-bit), null = untested.
  */
 export interface BenchmarkRun {
   id: string;
@@ -49,39 +51,4 @@ export interface BenchmarkRun {
   tps: number | null;
   ttft_s: number | null;
   aggressively_quantized: boolean | null;
-}
-
-// --- Nested `.select()` result shapes (PostgREST embeds) ---
-
-export interface PlanModelWithModel extends PlanModel {
-  models: Model;
-}
-
-export interface PlanWithModels extends Plan {
-  plan_models: PlanModelWithModel[];
-}
-
-export interface ProviderWithPlansAndModels extends Provider {
-  plans: PlanWithModels[];
-}
-
-// --- Display types for UI (not database tables) ---
-
-export interface DisplayPlan {
-  id: string;
-  name: string;
-  subtitle: string;
-  models: string;
-  tps: number;
-  tpsPercent: number;
-  quantizationStatus: 'aggressive' | 'standard';
-  price: string;
-  period: string;
-}
-
-export interface DisplayProvider {
-  id: string;
-  name: string;
-  providerId: string;
-  plans: DisplayPlan[];
 }
