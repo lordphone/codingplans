@@ -5,7 +5,6 @@ export type ProviderPageQuantColor = 'tertiary' | 'secondary' | 'neutral';
 export interface ProviderPageModelRow {
   id: string;
   name: string;
-  quantization: string;
   quantizationColor: ProviderPageQuantColor;
   tps: string;
   ttft: string;

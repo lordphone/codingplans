@@ -86,7 +86,11 @@
                           [class.text-tertiary]="row.quantizationColor === 'tertiary'"
                           [class.text-secondary]="row.quantizationColor === 'secondary'"
                           [class.text-zinc-500]="row.quantizationColor === 'neutral'">
-                          {{ row.quantization }}
+                          @switch (row.quantizationColor) {
+                            @case ('tertiary') { Aggressive }
+                            @case ('secondary') { Standard }
+                            @default { Untested }
+                          }
                         </span>
                       </div>
                     </div>

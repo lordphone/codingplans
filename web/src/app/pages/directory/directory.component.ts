@@ -28,7 +28,7 @@ function modelRowMatchesQuery(
 ): boolean {
   return (
     row.modelName.toLowerCase().includes(query) ||
-    row.quantization.toLowerCase().includes(query) ||
+    row.quantizationStatus.includes(query) ||
     plan.name.toLowerCase().includes(query) ||
     plan.id.toLowerCase().includes(query) ||
     provider.name.toLowerCase().includes(query) ||
@@ -114,12 +114,14 @@ export class DirectoryComponent {
     return formatTtftSeconds(seconds);
   }
 
-  /** “Loss Detected” only when the benchmark label calls out scam/reset; INT4/INT8 are red without this line. */
-  showsQuantizationLossNotice(row: DirectoryModelRow): boolean {
-    if (row.quantizationStatus !== 'scam') {
-      return false;
+  quantizationLabel(status: DirectoryModelRow['quantizationStatus']): string {
+    switch (status) {
+      case 'aggressive':
+        return 'Aggressive';
+      case 'standard':
+        return 'Standard';
+      default:
+        return 'Untested';
     }
-    const q = row.quantization.toLowerCase();
-    return q.includes('scam') || /\breset\b/.test(q);
   }
 }
