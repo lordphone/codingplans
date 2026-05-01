@@ -1,31 +1,33 @@
 #!/usr/bin/env python3
-"""Test 4 — Arithmetic stress (single-endpoint runner + comparator).
+"""Test 1 — Long deterministic rollout divergence (single-endpoint runner +
+comparator).
 
-Long multiplication is unusually sensitive to weight quantization because
-each digit position depends on near-tied logits over the digit vocabulary.
+For each prompt, sample N completions at temperature=0; later compare two
+endpoints via:
+  * mean pairwise prefix-character agreement *within* each side (intra), and
+  * prefix-character agreement *between* the two sides' modal completions
+    (inter).
 
-This file exposes:
-  * `run_arithmetic(endpoint, …) -> RunResult` — hits one endpoint, samples
-    the panel N times per prompt at T=0, parses an integer from each
-    completion, returns a self-describing artifact.
-  * `compare_arithmetic(reference, target) -> ArithmeticReport` — pure
-    function over two `RunResult`s. No HTTP, no env.
-  * CLI: run once against a single endpoint slug. Compare two artifacts
-    with `compare.py`.
+If the two endpoints serve the same weights, batch nondeterminism is the
+only thing that can cause divergence, so inter ≈ intra. Quantization breaks
+ties at narrow-margin token positions, snowballing into earlier divergence.
+The comparator fails when `inter / intra_floor < 0.5`.
 
 Usage:
-  python benchmarks/fidelity/weights/test_arithmetic.py --endpoint glm5-official
-  python benchmarks/fidelity/weights/test_arithmetic.py --endpoint glm5-alibaba
+  python benchmarks/fidelity/model_identity/test_rollout_prefix.py --endpoint glm5-official --n 10 --max-tokens 2000
+  python benchmarks/fidelity/model_identity/test_rollout_prefix.py --endpoint glm5-alibaba --n 10 --max-tokens 2000
   python benchmarks/fidelity/compare.py runs/<ref>.summary.json runs/<target>.summary.json
+
+Outputs land under benchmarks/fidelity/model_identity/runs/.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import mean
 from typing import Sequence
 
 _HERE = Path(__file__).resolve().parent
@@ -42,6 +44,7 @@ from common import (  # noqa: E402
     SCHEMA_VERSION,
     StealthChatClient,
     assert_comparable,
+    common_prefix_chars,
     get_endpoint,
     load_dotenv,
     make_schedule,
@@ -50,56 +53,42 @@ from common import (  # noqa: E402
     utc_stamp,
     write_run_artifacts,
 )
-from prompts import ARITHMETIC_PANEL_ID, ARITHMETIC_PROMPTS  # noqa: E402
+from prompts import ROLLOUT_PANEL_ID, ROLLOUT_PROMPTS  # noqa: E402
 
 RUNS_DIR = _HERE / "runs"
 
-TEST_NAME = "arithmetic"
-DEFAULT_N_SAMPLES = 3
-DEFAULT_MAX_TOKENS = 50
+TEST_NAME = "rollout_prefix"
+DEFAULT_N_SAMPLES = 10
+DEFAULT_MAX_TOKENS = 2000
 DEFAULT_SCHEDULE_SEED = 20260425
-DEFAULT_SLEEP_RANGE = (1.0, 4.0)
-FAIL_THRESHOLD_GAP = 0.05
-
-# Pull a long contiguous digit run, optional thousands-separators tolerated.
-_INT_RE = re.compile(r"-?\d[\d,]*")
+DEFAULT_SLEEP_RANGE = (1.5, 5.5)
+FAIL_RATIO_THRESHOLD = 0.5
 
 
-def _parse_int(content: str) -> int | None:
-    """Best-effort integer extraction from a free-form completion.
-
-    We don't enforce any format on the model, so quantization differences in
-    surrounding prose don't masquerade as arithmetic errors. We pick the
-    longest digit run in the response and strip thousands separators.
-    """
-    if not content:
-        return None
-    matches = _INT_RE.findall(content)
-    if not matches:
-        return None
-    matches.sort(key=lambda s: len(s.replace(",", "").lstrip("-")), reverse=True)
-    raw = matches[0].replace(",", "")
-    try:
-        return int(raw)
-    except ValueError:
-        return None
+def _mean_pairwise_prefix(samples: list[str]) -> float:
+    if len(samples) < 2:
+        return float(len(samples[0])) if samples else 0.0
+    total = 0
+    pairs = 0
+    for i in range(len(samples)):
+        for j in range(i + 1, len(samples)):
+            total += common_prefix_chars(samples[i], samples[j])
+            pairs += 1
+    return total / pairs
 
 
-def run_arithmetic(
+def run_rollout_prefix(
     endpoint: Endpoint,
     *,
-    panel: Sequence[PromptItem] = ARITHMETIC_PROMPTS,
+    panel: Sequence[PromptItem] = ROLLOUT_PROMPTS,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     schedule_seed: int = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
-    """Run the arithmetic panel once against `endpoint`.
-
-    Returns `(RunResult, raw_rows)` — the `RunResult` is the comparable
-    artifact; `raw_rows` is a per-call forensic log suitable for JSONL.
-    """
+    """Run the rollout panel once against `endpoint`. Returns
+    `(RunResult, raw_rows)`."""
     panel = list(panel)
     schedule = make_schedule(len(panel), n_samples, seed=schedule_seed)
     outcomes = [
@@ -119,7 +108,7 @@ def run_arithmetic(
             )
             try:
                 resp = client.chat(endpoint, req)
-            except Exception as e:  # noqa: BLE001 — record and keep going
+            except Exception as e:  # noqa: BLE001
                 err = {
                     "i": i,
                     "prompt_idx": call.prompt_idx,
@@ -134,25 +123,21 @@ def run_arithmetic(
                 continue
 
             outcomes[call.prompt_idx].completions.append(resp.content)
-            parsed = _parse_int(resp.content)
-            expected = item.meta["expected"]
             raw_rows.append({
                 "i": i,
                 "prompt_idx": call.prompt_idx,
                 "prompt_name": item.name,
                 "sample_idx": call.sample_idx,
                 "completion_tokens": resp.completion_tokens,
+                "content_len": len(resp.content),
+                "finish_reason": resp.finish_reason,
                 "latency_s": round(resp.latency_s, 4),
-                "content": resp.content[:200],
-                "parsed_int": parsed,
-                "expected": expected,
-                "match": parsed == expected,
+                "content_head": resp.content[:200],
             })
             if progress:
                 print(
-                    f"[{i}/{total}] {item.name:<22} "
-                    f"got={parsed} exp={expected} "
-                    f"{'OK' if parsed == expected else 'MISS'}",
+                    f"[{i}/{total}] {item.name:<26} "
+                    f"len={len(resp.content):5d} t={resp.latency_s:6.2f}s",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -162,7 +147,7 @@ def run_arithmetic(
     result = RunResult(
         schema_version=SCHEMA_VERSION,
         test_name=TEST_NAME,
-        panel_id=ARITHMETIC_PANEL_ID,
+        panel_id=ROLLOUT_PANEL_ID,
         panel_size=len(panel),
         prompt_hash=panel_hash(panel),
         n_samples=n_samples,
@@ -181,135 +166,126 @@ def run_arithmetic(
 
 
 # ---------------------------------------------------------------------------
-# Comparison (pure function over two RunResults)
+# Comparison
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class ArithmeticPromptComparison:
+class RolloutPromptComparison:
     prompt_idx: int
     name: str
-    expected: int
-    digits: int
-    reference_modal: int | None
-    reference_modal_count: int
-    reference_match: bool
-    target_modal: int | None
-    target_modal_count: int
-    target_match: bool
+    n_reference: int
+    n_target: int
+    reference_intra_prefix_mean: float
+    target_intra_prefix_mean: float
+    inter_prefix_chars: int
+    skipped: bool
 
 
 @dataclass
-class ArithmeticReport:
+class RolloutReport:
     test_name: str
     reference_label: str
     target_label: str
     panel_size: int
     usable_prompts: int
     n_samples: int
-    target_modal_accuracy: float
-    reference_modal_accuracy: float
-    accuracy_gap_ref_minus_target: float
-    target_mean_intra_disagreement: float
-    reference_mean_intra_disagreement: float
-    fail_threshold_gap_gt: float
+    mean_inter_prefix_chars: float
+    mean_reference_intra_prefix: float
+    mean_target_intra_prefix: float
+    intra_floor_chars: float
+    inter_over_intra_floor_ratio: float
+    fail_threshold_lt: float
     fail: bool
-    per_prompt: list[ArithmeticPromptComparison]
+    per_prompt: list[RolloutPromptComparison]
 
 
-def _side_stats(completions: list[str]) -> dict | None:
-    if not completions:
-        return None
-    parsed = [_parse_int(c) for c in completions]
-    valid = [str(p) for p in parsed if p is not None]
-    modal_str, modal_count = modal(valid)
-    modal_int = int(modal_str) if modal_str else None
-    intra = (len(completions) - modal_count) / len(completions)
-    return {"modal": modal_int, "modal_count": modal_count, "intra": intra}
-
-
-def compare_arithmetic(reference: RunResult, target: RunResult) -> ArithmeticReport:
-    """Pure comparison over two `RunResult`s. Raises if incompatible."""
+def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutReport:
     assert_comparable(reference, target, expected_test=TEST_NAME)
-
-    per_prompt: list[ArithmeticPromptComparison] = []
-    ref_correct = 0
-    tgt_correct = 0
-    ref_intra_sum = 0.0
-    tgt_intra_sum = 0.0
-    usable = 0
 
     by_idx_ref = {p.prompt_idx: p for p in reference.prompts}
     by_idx_tgt = {p.prompt_idx: p for p in target.prompts}
+
+    per_prompt: list[RolloutPromptComparison] = []
+    inter_chars: list[int] = []
+    ref_intra_means: list[float] = []
+    tgt_intra_means: list[float] = []
 
     for idx in sorted(by_idx_ref):
         rp = by_idx_ref[idx]
         tp = by_idx_tgt.get(idx)
         if tp is None:
             continue
-        meta = rp.meta or {}
-        expected = int(meta.get("expected"))
-        digits = int(meta.get("digits", 0))
-
-        rs = _side_stats(rp.completions)
-        ts = _side_stats(tp.completions)
-
-        ref_match = bool(rs and rs["modal"] == expected)
-        tgt_match = bool(ts and ts["modal"] == expected)
-        per_prompt.append(ArithmeticPromptComparison(
+        r_samples = rp.completions
+        t_samples = tp.completions
+        if not r_samples or not t_samples:
+            per_prompt.append(RolloutPromptComparison(
+                prompt_idx=idx,
+                name=rp.name,
+                n_reference=len(r_samples),
+                n_target=len(t_samples),
+                reference_intra_prefix_mean=0.0,
+                target_intra_prefix_mean=0.0,
+                inter_prefix_chars=0,
+                skipped=True,
+            ))
+            continue
+        r_modal, _ = modal(r_samples)
+        t_modal, _ = modal(t_samples)
+        r_intra = _mean_pairwise_prefix(r_samples)
+        t_intra = _mean_pairwise_prefix(t_samples)
+        inter = common_prefix_chars(r_modal, t_modal)
+        per_prompt.append(RolloutPromptComparison(
             prompt_idx=idx,
             name=rp.name,
-            expected=expected,
-            digits=digits,
-            reference_modal=rs["modal"] if rs else None,
-            reference_modal_count=rs["modal_count"] if rs else 0,
-            reference_match=ref_match,
-            target_modal=ts["modal"] if ts else None,
-            target_modal_count=ts["modal_count"] if ts else 0,
-            target_match=tgt_match,
+            n_reference=len(r_samples),
+            n_target=len(t_samples),
+            reference_intra_prefix_mean=round(r_intra, 1),
+            target_intra_prefix_mean=round(t_intra, 1),
+            inter_prefix_chars=inter,
+            skipped=False,
         ))
-        if rs and ts:
-            usable += 1
-            ref_correct += int(ref_match)
-            tgt_correct += int(tgt_match)
-            ref_intra_sum += rs["intra"]
-            tgt_intra_sum += ts["intra"]
+        inter_chars.append(inter)
+        ref_intra_means.append(r_intra)
+        tgt_intra_means.append(t_intra)
 
-    if usable == 0:
-        return ArithmeticReport(
+    if not inter_chars:
+        return RolloutReport(
             test_name=TEST_NAME,
             reference_label=reference.endpoint_label,
             target_label=target.endpoint_label,
             panel_size=reference.panel_size,
             usable_prompts=0,
             n_samples=reference.n_samples,
-            target_modal_accuracy=0.0,
-            reference_modal_accuracy=0.0,
-            accuracy_gap_ref_minus_target=0.0,
-            target_mean_intra_disagreement=0.0,
-            reference_mean_intra_disagreement=0.0,
-            fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
+            mean_inter_prefix_chars=0.0,
+            mean_reference_intra_prefix=0.0,
+            mean_target_intra_prefix=0.0,
+            intra_floor_chars=0.0,
+            inter_over_intra_floor_ratio=0.0,
+            fail_threshold_lt=FAIL_RATIO_THRESHOLD,
             fail=False,
             per_prompt=per_prompt,
         )
 
-    ref_acc = ref_correct / usable
-    tgt_acc = tgt_correct / usable
-    gap = ref_acc - tgt_acc
-    return ArithmeticReport(
+    inter = mean(inter_chars)
+    r_intra = mean(ref_intra_means)
+    t_intra = mean(tgt_intra_means)
+    floor = min(r_intra, t_intra)
+    ratio = (inter / floor) if floor > 0 else float("inf")
+    return RolloutReport(
         test_name=TEST_NAME,
         reference_label=reference.endpoint_label,
         target_label=target.endpoint_label,
         panel_size=reference.panel_size,
-        usable_prompts=usable,
+        usable_prompts=len(inter_chars),
         n_samples=reference.n_samples,
-        target_modal_accuracy=round(tgt_acc, 4),
-        reference_modal_accuracy=round(ref_acc, 4),
-        accuracy_gap_ref_minus_target=round(gap, 4),
-        target_mean_intra_disagreement=round(tgt_intra_sum / usable, 4),
-        reference_mean_intra_disagreement=round(ref_intra_sum / usable, 4),
-        fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
-        fail=gap > FAIL_THRESHOLD_GAP,
+        mean_inter_prefix_chars=round(inter, 1),
+        mean_reference_intra_prefix=round(r_intra, 1),
+        mean_target_intra_prefix=round(t_intra, 1),
+        intra_floor_chars=round(floor, 1),
+        inter_over_intra_floor_ratio=round(ratio, 3),
+        fail_threshold_lt=FAIL_RATIO_THRESHOLD,
+        fail=ratio < FAIL_RATIO_THRESHOLD,
         per_prompt=per_prompt,
     )
 
@@ -325,19 +301,18 @@ def main() -> int:
                         help="Endpoint slug from targets.ENDPOINTS")
     parser.add_argument("--n", type=int, default=DEFAULT_N_SAMPLES,
                         help=f"Samples per prompt (default {DEFAULT_N_SAMPLES})")
-    parser.add_argument("--panel-size", type=int, default=len(ARITHMETIC_PROMPTS),
+    parser.add_argument("--panel-size", type=int, default=len(ROLLOUT_PROMPTS),
                         help="Truncate panel for cheap dry runs")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
                         help=f"max_tokens per request (default {DEFAULT_MAX_TOKENS})")
-    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
-                        help="Schedule shuffle seed")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED)
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()
 
     load_dotenv()
     endpoint = get_endpoint(args.endpoint)
-    panel = list(ARITHMETIC_PROMPTS[: args.panel_size])
+    panel = list(ROLLOUT_PROMPTS[: args.panel_size])
 
     n_calls = len(panel) * args.n
     print(
@@ -347,7 +322,7 @@ def main() -> int:
         file=sys.stderr,
     )
 
-    result, raw_rows = run_arithmetic(
+    result, raw_rows = run_rollout_prefix(
         endpoint,
         panel=panel,
         n_samples=args.n,

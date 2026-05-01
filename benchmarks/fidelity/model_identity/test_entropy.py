@@ -11,8 +11,8 @@ target/reference entropy ratio and fails if a majority of prompts exceed
 1.15.
 
 Usage:
-  python benchmarks/fidelity/weights/test_entropy.py --endpoint glm5-official --n 50
-  python benchmarks/fidelity/weights/test_entropy.py --endpoint glm5-alibaba --n 50
+  python benchmarks/fidelity/model_identity/test_entropy.py --endpoint glm5-official --n 50
+  python benchmarks/fidelity/model_identity/test_entropy.py --endpoint glm5-alibaba --n 50
   python benchmarks/fidelity/compare.py runs/<ref>.summary.json runs/<target>.summary.json
 """
 

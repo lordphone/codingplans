@@ -15,10 +15,10 @@ Design rules — every test under fidelity/<family>/ follows them:
   4. **Stealth.** Every runner uses `StealthChatClient` (rotated UA, jittered
      pacing) and a shuffled `make_schedule`. No batch APIs, ever.
 
-This module is family-agnostic: it lives at fidelity/ root so weights/,
-identity/, and long_context/ can all import the same plumbing. Each family
-keeps its own prompts and per-family runs/ directory; the runner CLIs pass
-their `runs_dir` to `write_run_artifacts` explicitly.
+This module is family-agnostic: it lives at fidelity/ root so
+model_identity/ and long_context/ can all import the same plumbing. Each
+family keeps its own prompts and per-family runs/ directory; the runner
+CLIs pass their `runs_dir` to `write_run_artifacts` explicitly.
 
 `client.py` and `targets.py` are siblings of this file.
 """

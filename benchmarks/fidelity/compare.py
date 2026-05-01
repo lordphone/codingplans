@@ -29,14 +29,12 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent  # benchmarks/fidelity/
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE / "weights"))
+sys.path.insert(0, str(_HERE / "model_identity"))
 sys.path.insert(0, str(_HERE / "long_context"))
-# Future families:
-# sys.path.insert(0, str(_HERE / "identity"))
 
 from common import read_run_result  # noqa: E402
 
-# weights/
+# model_identity/
 from test_arithmetic import TEST_NAME as ARITHMETIC, compare_arithmetic  # noqa: E402
 from test_entropy import TEST_NAME as ENTROPY, compare_entropy  # noqa: E402
 from test_rollout_prefix import TEST_NAME as ROLLOUT, compare_rollout_prefix  # noqa: E402

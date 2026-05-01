@@ -16,7 +16,7 @@ The shape of the recall curve across the grid is the primary diagnostic:
   * **Uniform recall drop across the whole grid** → either weight
     quantization severe enough to hurt instruction-following, or a model
     swap to something materially weaker. Cross-reference with
-    `weights/test_arithmetic.py` and `weights/test_rollout_prefix.py`.
+    `model_identity/test_arithmetic.py` and `model_identity/test_rollout_prefix.py`.
 
 This file follows the standard fidelity test_*.py shape:
 

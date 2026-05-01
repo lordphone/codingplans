@@ -11,10 +11,10 @@ Which test catches which audit-bait behavior, and what's still TODO.
 
 ## Status
 
-Implemented under `weights/`:
-- `arithmetic` — `weights/test_arithmetic.py`
-- `rollout_prefix` — `weights/test_rollout_prefix.py`
-- `entropy` — `weights/test_entropy.py` *(not in the matrix; sampling-distribution sanity check, secondary signal for weight quantization)*
+Implemented under `model_identity/`:
+- `arithmetic` — `model_identity/test_arithmetic.py`
+- `rollout_prefix` — `model_identity/test_rollout_prefix.py`
+- `entropy` — `model_identity/test_entropy.py` *(not in the matrix; sampling-distribution sanity check, secondary signal for weight quantization)*
 
 Implemented under `long_context/`:
 - `needle_single` — `long_context/test_needle_single.py` (2D length × depth grid)
@@ -22,4 +22,4 @@ Implemented under `long_context/`:
 - `needle_aggregation` — `long_context/test_needle_aggregation.py` (M scattered values, sum)
 - `needle_common` — `long_context/needle_common.py` (filler generator + insertion + grid helpers)
 
-`identity/` is unused so far — no threat in the current matrix points there.
+No empty placeholder families — every directory under `fidelity/` has at least one runnable test.

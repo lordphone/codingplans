@@ -1,7 +1,7 @@
 """Endpoint registry for fidelity audits.
 
 Each `Endpoint` is a single OpenAI-compatible chat target. The fidelity tests
-take **one** endpoint at a time (see `benchmarks/fidelity/weights/`), so this
+take **one** endpoint at a time (see `benchmarks/fidelity/model_identity/`), so this
 file is a flat registry — no notion of "pair." Comparison is a separate step
 that joins two run artifacts.
 
