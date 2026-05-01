@@ -61,6 +61,7 @@ from framework import (  # noqa: E402
     SCHEMA_VERSION,
     StealthChatClient,
     assert_comparable,
+    fit_quadratic,
     get_endpoint,
     load_dotenv,
     make_schedule,
@@ -79,23 +80,39 @@ from needle import (  # noqa: E402
 RUNS_DIR = _HERE / "runs"
 
 TEST_NAME = "needle_multi"
-DEFAULT_N_SAMPLES = 1
-DEFAULT_MAX_TOKENS = 200
-DEFAULT_SCHEDULE_SEED = 20260425
+# Research §5: "K=8–10 is the sweet spot — large enough to fit a quadratic
+# curve (test for negative quadratic coefficient = smile) and not so large
+# that the needles themselves saturate the context." We pick K=8 with
+# spread depths and 5 samples per cell.
+DEFAULT_N_SAMPLES = 5
+DEFAULT_MAX_TOKENS = 320
+DEFAULT_SCHEDULE_SEED: int | None = None
 DEFAULT_SLEEP_RANGE = (1.5, 5.5)
 DEFAULT_FILLER_SEED = 271828
 
-# Per-context defaults. K=5 needles is enough to expose middle-depth sag
-# (depths 0.1, 0.3, 0.5, 0.7, 0.9) without dragging output token counts
-# up far enough to bump max_tokens.
-DEFAULT_LENGTHS = (4_000, 8_000, 16_000, 32_000)
-DEFAULT_K = 5
-DEFAULT_DEPTHS = (0.1, 0.3, 0.5, 0.7, 0.9)
+# Length sweep covers 8K–128K characters (~2.3K–37K tokens) so we span
+# typical truncation regimes. K is set by len(DEFAULT_DEPTHS).
+DEFAULT_LENGTHS = (8_000, 16_000, 32_000, 64_000, 128_000)
+# 8 evenly spread depths anchored away from the very edges (so the model
+# can't trivially win via attention-sink primacy/recency).
+DEFAULT_DEPTHS = (0.06, 0.20, 0.34, 0.48, 0.62, 0.76, 0.88, 0.95)
 
-# Fail when target's per-needle recall rate underperforms reference by
-# more than this. Multi-needle is sensitive — even a healthy model misses
-# a needle now and then — so the threshold is wider than for arithmetic.
+# Two failure conditions are checked, either of which fires:
+#   (a) overall per-needle recall gap > FAIL_THRESHOLD_GAP, OR
+#   (b) target's smile-curvature coefficient is *more positive* than the
+#       reference's by more than CURVATURE_GAP_THRESHOLD.
+#
+# Sign convention: we fit y = a + b*d + c*d² to per-depth recall in [0,1]
+# over depth in [0,1]. A smile shape — high recall at d=0 and d=1, low at
+# d=0.5 — is a parabola opening upward, i.e. c > 0. KV-cache quantization
+# deepens the smile relative to the BF16 baseline, so target_c > ref_c
+# means a stronger smile on the target side (research §5).
 FAIL_THRESHOLD_GAP = 0.20
+CURVATURE_GAP_THRESHOLD = 0.50  # in recall-units / depth² (recall ∈ [0,1])
+# Lengths where the reference's overall recall is below this are excluded
+# from the depth-curve aggregation, so we only fit smile shapes on
+# contexts where the model is actually demonstrating recall.
+HEALTHY_LENGTH_RECALL_FLOOR = 0.5
 
 
 def _needle_value(rng: random.Random) -> str:
@@ -150,8 +167,10 @@ def _build_panel(
             },
         ))
 
+    # Bumped v1 -> v2: panel content changed (K=8 default, depth grid
+    # reshuffled). Old artifacts no longer comparable.
     panel_id = (
-        f"needle_multi_v1__"
+        f"needle_multi_v2__"
         f"L{format_panel_signature(list(lengths))}__"
         f"D{format_panel_signature(list(depths))}__"
         f"K{k}__"
@@ -189,11 +208,14 @@ def run_needle_multi(
     filler_seed: int = DEFAULT_FILLER_SEED,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    schedule_seed: int = DEFAULT_SCHEDULE_SEED,
+    schedule_seed: int | None = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
     """Run the multi-needle panel once against `endpoint`."""
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
     panel, panel_id = _build_panel(
         lengths=lengths, depths=depths, filler_seed=filler_seed
     )
@@ -307,12 +329,23 @@ class NeedleMultiReport:
     reference_overall_recall: float
     target_overall_recall: float
     recall_gap_ref_minus_target: float
-    # Depth-axis curves averaged over all lengths. The shape (vs the
-    # reference's same shape) is the diagnostic — middle-depth sag is
-    # the KV-cache signature, flat truncation is the truncation signature.
+    # Depth-axis curves averaged over the *healthy* lengths only (lengths
+    # where the reference's overall recall ≥ HEALTHY_LENGTH_RECALL_FLOOR).
+    # Mixing in lengths the model is truncating both sides on would smear
+    # zero-recall noise into the smile fit.
     reference_depth_recall: dict[str, float]
     target_depth_recall: dict[str, float]
+    healthy_lengths: list[int]
+    # Quadratic-fit curvature coefficient on per-depth recall. A positive
+    # `c` is a smile (recall high at d=0 and d=1, low at d=0.5) — the
+    # KV-cache quantization signature (research §5). Compare curvatures
+    # between sides; target − reference > 0 means the target has a
+    # deeper smile than the reference, i.e. KV-cache degradation.
+    reference_curvature: float | None
+    target_curvature: float | None
+    curvature_gap_target_minus_ref: float | None
     fail_threshold_gap_gt: float
+    curvature_gap_threshold: float
     fail: bool
     per_cell: list[NeedleMultiCellComparison]
 
@@ -338,20 +371,49 @@ def _per_depth_recall(
     return rates
 
 
+def _curvature(depths: list[float], recalls: list[float]) -> float | None:
+    """Quadratic-fit curvature coefficient on per-depth recall.
+
+    Returns None if the fit is degenerate (fewer than 3 distinct depths).
+    Sign convention: y = a + b*d + c*d² with d, y ∈ [0,1]. A positive
+    coefficient = smile shape (high at edges, low in middle): the
+    KV-cache quantization signature."""
+    if len(depths) < 3 or len(set(depths)) < 3:
+        return None
+    try:
+        _a, _b, c = fit_quadratic(depths, recalls)
+    except ValueError:
+        return None
+    return c
+
+
 def compare_needle_multi(
     reference: RunResult, target: RunResult
 ) -> NeedleMultiReport:
+    """Compare two multi-needle runs.
+
+    Two failure modes are flagged:
+      1. Overall per-needle recall gap > FAIL_THRESHOLD_GAP — generic
+         "target is worse" signal, also catches truncation.
+      2. Target's smile-curvature is more negative than reference's by
+         more than CURVATURE_GAP_THRESHOLD — research §5 KV-cache
+         signature: middle-depth sag worse than the BF16 baseline's
+         intrinsic lost-in-the-middle.
+
+    The depth-curve fits are computed over *healthy lengths* only
+    (lengths where the reference's overall recall meets a floor) so
+    truncation events don't pull zero-recall noise into the smile fit.
+    """
     assert_comparable(reference, target, expected_test=TEST_NAME)
 
     by_idx_ref = {p.prompt_idx: p for p in reference.prompts}
     by_idx_tgt = {p.prompt_idx: p for p in target.prompts}
 
     per_cell: list[NeedleMultiCellComparison] = []
-    # Depth-keyed buckets averaged across cells. We key on the float
-    # depth value (formatted) so the report is comparable across runs even
-    # if Python's dict ordering changes.
-    ref_dep_buckets: dict[str, list[float]] = {}
-    tgt_dep_buckets: dict[str, list[float]] = {}
+    # First pass: per-cell rates and identify "healthy" lengths.
+    cell_records: list[tuple[int, list[float], list[float], list[float], list[str]]] = []
+    # length -> ref overall recall (used to gate healthy lengths)
+    ref_overall_by_length: dict[int, float] = {}
     ref_total = 0.0
     tgt_total = 0.0
     usable = 0
@@ -372,6 +434,8 @@ def compare_needle_multi(
         t_rates = _per_depth_recall(tp.completions, needles)
         r_overall = sum(r_rates) / k if k else 0.0
         t_overall = sum(t_rates) / k if k else 0.0
+        depths = [float(d) for (_, d, _v) in needles]
+        keys = [f"{d:g}" for d in depths]
 
         per_cell.append(NeedleMultiCellComparison(
             prompt_idx=idx,
@@ -388,10 +452,10 @@ def compare_needle_multi(
             usable += 1
             ref_total += r_overall
             tgt_total += t_overall
-            for (_idx, depth, _val), r_rate, t_rate in zip(needles, r_rates, t_rates):
-                key = f"{float(depth):g}"
-                ref_dep_buckets.setdefault(key, []).append(r_rate)
-                tgt_dep_buckets.setdefault(key, []).append(t_rate)
+            cell_records.append((length, depths, r_rates, t_rates, keys))
+            ref_overall_by_length[length] = max(
+                ref_overall_by_length.get(length, 0.0), r_overall
+            )
 
     if usable == 0:
         return NeedleMultiReport(
@@ -406,16 +470,61 @@ def compare_needle_multi(
             recall_gap_ref_minus_target=0.0,
             reference_depth_recall={},
             target_depth_recall={},
+            healthy_lengths=[],
+            reference_curvature=None,
+            target_curvature=None,
+            curvature_gap_target_minus_ref=None,
             fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
+            curvature_gap_threshold=CURVATURE_GAP_THRESHOLD,
             fail=False,
             per_cell=per_cell,
         )
 
+    healthy_lengths = sorted(
+        L for L, r in ref_overall_by_length.items()
+        if r >= HEALTHY_LENGTH_RECALL_FLOOR
+    )
+
+    # Aggregate per-depth recall over healthy lengths only.
+    ref_dep_points: list[tuple[float, float]] = []
+    tgt_dep_points: list[tuple[float, float]] = []
+    for length, depths, r_rates, t_rates, _keys in cell_records:
+        if length not in healthy_lengths:
+            continue
+        for d, rr, tr in zip(depths, r_rates, t_rates):
+            ref_dep_points.append((d, rr))
+            tgt_dep_points.append((d, tr))
+
+    def _bucket_mean_by_depth(
+        points: list[tuple[float, float]],
+    ) -> dict[str, float]:
+        buckets: dict[str, list[float]] = {}
+        for d, v in points:
+            buckets.setdefault(f"{d:g}", []).append(v)
+        return {k: round(sum(v) / len(v), 4) for k, v in buckets.items() if v}
+
+    ref_depth_recall = _bucket_mean_by_depth(ref_dep_points)
+    tgt_depth_recall = _bucket_mean_by_depth(tgt_dep_points)
+
+    # Curvature fit on the depth curve. Use the bucket means (one
+    # observation per depth) so equally-weighted points are fit, not
+    # ones biased toward depths that appear more often.
+    ref_xs = [float(k) for k in ref_depth_recall.keys()]
+    ref_ys = [ref_depth_recall[k] for k in ref_depth_recall.keys()]
+    tgt_ys = [tgt_depth_recall[k] for k in ref_depth_recall.keys()]
+    ref_c = _curvature(ref_xs, ref_ys)
+    tgt_c = _curvature(ref_xs, tgt_ys)
+    curvature_gap = (
+        None if (ref_c is None or tgt_c is None) else round(tgt_c - ref_c, 4)
+    )
+
     ref_overall = ref_total / usable
     tgt_overall = tgt_total / usable
-
-    def _bucket_mean(b: dict[str, list[float]]) -> dict[str, float]:
-        return {k: round(sum(v) / len(v), 4) for k, v in b.items() if v}
+    recall_fail = (ref_overall - tgt_overall) > FAIL_THRESHOLD_GAP
+    # Smile = positive c; KV-cache deepens smile, so tgt_c > ref_c.
+    curvature_fail = (
+        curvature_gap is not None and curvature_gap > CURVATURE_GAP_THRESHOLD
+    )
 
     return NeedleMultiReport(
         test_name=TEST_NAME,
@@ -427,10 +536,15 @@ def compare_needle_multi(
         reference_overall_recall=round(ref_overall, 4),
         target_overall_recall=round(tgt_overall, 4),
         recall_gap_ref_minus_target=round(ref_overall - tgt_overall, 4),
-        reference_depth_recall=_bucket_mean(ref_dep_buckets),
-        target_depth_recall=_bucket_mean(tgt_dep_buckets),
+        reference_depth_recall=ref_depth_recall,
+        target_depth_recall=tgt_depth_recall,
+        healthy_lengths=healthy_lengths,
+        reference_curvature=None if ref_c is None else round(ref_c, 4),
+        target_curvature=None if tgt_c is None else round(tgt_c, 4),
+        curvature_gap_target_minus_ref=curvature_gap,
         fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
-        fail=(ref_overall - tgt_overall) > FAIL_THRESHOLD_GAP,
+        curvature_gap_threshold=CURVATURE_GAP_THRESHOLD,
+        fail=bool(recall_fail or curvature_fail),
         per_cell=per_cell,
     )
 
@@ -463,7 +577,8 @@ def main() -> int:
                              "K is set to len(depths)")
     parser.add_argument("--filler-seed", type=int, default=DEFAULT_FILLER_SEED)
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
-    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
+                        help="Schedule shuffle seed (default: random per run)")
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()

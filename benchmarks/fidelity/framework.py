@@ -29,6 +29,8 @@ import hashlib
 import json
 import math
 import random
+import re
+import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -52,12 +54,18 @@ __all__ = [
     "SCHEMA_VERSION",
     "assert_comparable",
     "common_prefix_chars",
+    "digit_match_rate",
     "first_word",
+    "fit_quadratic",
     "load_dotenv",
     "make_schedule",
+    "mean_pairwise_prefix",
     "modal",
+    "normalize_text",
     "panel_hash",
+    "rank1_mass",
     "read_run_result",
+    "renyi2_entropy",
     "safe_label",
     "shannon_entropy",
     "utc_stamp",
@@ -128,16 +136,173 @@ def shannon_entropy(values: list[str]) -> float:
     return h
 
 
+def renyi2_entropy(values: list[str]) -> float:
+    """Renyi-2 (collision) entropy in bits: -log2(sum p_i^2).
+
+    More sample-efficient than Shannon at moderate N: at N≈200 the plug-in
+    Shannon estimator is biased ~0.3 bits, while Renyi-2 is much closer to
+    the true value. This is the recommended primary statistic for the
+    entropy test under text-only sampling (logprobs would dominate either)."""
+    if not values:
+        return 0.0
+    counts = Counter(values)
+    total = len(values)
+    p2 = sum((c / total) ** 2 for c in counts.values())
+    if p2 <= 0.0:
+        return 0.0
+    return -math.log2(p2)
+
+
+def rank1_mass(values: list[str]) -> float:
+    """Probability mass of the modal value (rank-1 mass).
+
+    A coarse but extremely sample-efficient quantization proxy: a flatter
+    logit distribution lowers the modal probability. Detectable with ~200
+    samples for a ~5% shift, vs ~10k for a clean Shannon estimate."""
+    if not values:
+        return 0.0
+    _, top = Counter(values).most_common(1)[0]
+    return top / len(values)
+
+
+_OUTER_PUNCT_CHARS = " \t\r\n.,;:!?()[]{}\"'`*_~#>"
+
+
 def first_word(text: str) -> str:
-    """First whitespace-bounded token of `text`. Tokenizer-free proxy for
-    the model's first emitted token when comparing first-token distributions."""
+    """Normalized first whitespace-bounded token of `text`.
+
+    Tokenizer-free proxy for the model's first emitted token. Lowercased
+    and stripped of leading/trailing punctuation so `Redis.`, `"redis"`,
+    and `redis` collapse to the same bucket — without that normalization,
+    two endpoints serving the same weights look like they have different
+    first-token distributions purely from a stray period or quote.
+    """
     stripped = text.lstrip()
     if not stripped:
         return ""
+    end = len(stripped)
     for i, ch in enumerate(stripped):
         if ch.isspace():
-            return stripped[:i]
-    return stripped
+            end = i
+            break
+    word = stripped[:end].strip(_OUTER_PUNCT_CHARS)
+    return word.casefold()
+
+
+def digit_match_rate(parsed: int | None, expected: int) -> tuple[float, bool, bool]:
+    """Per-digit accuracy plus first-digit and last-digit indicators.
+
+    Returns (digit_accuracy, first_digit_ok, last_digit_ok). Digits are
+    aligned right-to-left (zero-padded to the longer of the two strings),
+    matching how arithmetic carries propagate. The first-digit indicator
+    uses the leftmost digit of `expected` (the most-significant); the
+    last-digit indicator uses the units digit. Sign mismatches collapse to
+    (0.0, False, False).
+
+    Why per-digit: research notes per-digit accuracy delivers ~10x the
+    statistical sensitivity of all-or-nothing match, and lets us see
+    *where* in the answer the model fails (last digits typically degrade
+    first under quantization)."""
+    if parsed is None:
+        return 0.0, False, False
+    if (parsed < 0) != (expected < 0):
+        return 0.0, False, False
+    p = str(abs(parsed))
+    e = str(abs(expected))
+    width = max(len(p), len(e))
+    p = p.rjust(width, "0")
+    e = e.rjust(width, "0")
+    matches = sum(1 for a, b in zip(p, e) if a == b)
+    return matches / width, p[0] == e[0], p[-1] == e[-1]
+
+
+def mean_pairwise_prefix(a_samples: list[str], b_samples: list[str]) -> float:
+    """Mean common-prefix length across all (a, b) pairs in a_samples × b_samples.
+
+    Used by the rollout-prefix test to compare two endpoints' completion
+    distributions without collapsing each side to its modal pick. Modal-
+    vs-modal singletons are dominated by batch noise; the full N×M cross-
+    pair mean is the distributional statistic the literature recommends."""
+    if not a_samples or not b_samples:
+        return 0.0
+    total = 0
+    pairs = 0
+    for a in a_samples:
+        for b in b_samples:
+            total += common_prefix_chars(a, b)
+            pairs += 1
+    return total / pairs if pairs else 0.0
+
+
+_WS_RE = re.compile(r"\s+")
+# Map "fancy" Unicode punctuation that providers' safety filters love to
+# rewrite back to ASCII so prefix comparisons aren't fooled by an em-dash
+# swap or a smart-quote substitution.
+_PUNCT_FOLD = {
+    ord("‘"): "'", ord("’"): "'", ord("‚"): "'", ord("‛"): "'",
+    ord("“"): '"', ord("”"): '"', ord("„"): '"', ord("‟"): '"',
+    ord("–"): "-", ord("—"): "-", ord("−"): "-",
+    ord(" "): " ",
+}
+
+
+def normalize_text(s: str) -> str:
+    """NFKC normalize, fold smart-quotes/dashes, collapse whitespace.
+
+    Some providers run a post-processing or safety pass that rewrites
+    rare punctuation; without normalization a strict character-level
+    prefix-match would fire on those rewrites and look like a swap."""
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    s = s.translate(_PUNCT_FOLD)
+    s = _WS_RE.sub(" ", s)
+    return s
+
+
+def fit_quadratic(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float, float]:
+    """Closed-form least-squares fit of y = a + b*x + c*x**2.
+
+    Returns (a, b, c). The curvature coefficient `c` is what we test for
+    the multi-needle smile-shape: a smile at depth ∈ [0,1] has c < 0
+    (peaks at the edges, dips in the middle). With ≥3 points and any
+    spread in xs the 3x3 normal-equation system is well-conditioned;
+    raises ValueError on degenerate input."""
+    n = len(xs)
+    if n != len(ys):
+        raise ValueError("xs and ys must be the same length")
+    if n < 3:
+        raise ValueError("need at least 3 points to fit a quadratic")
+    sx = sum(xs)
+    sx2 = sum(x * x for x in xs)
+    sx3 = sum(x ** 3 for x in xs)
+    sx4 = sum(x ** 4 for x in xs)
+    sy = sum(ys)
+    sxy = sum(x * y for x, y in zip(xs, ys))
+    sx2y = sum(x * x * y for x, y in zip(xs, ys))
+    # Solve 3x3 normal equations via Gaussian elimination with partial pivot.
+    m = [
+        [float(n), sx, sx2, sy],
+        [sx, sx2, sx3, sxy],
+        [sx2, sx3, sx4, sx2y],
+    ]
+    for i in range(3):
+        pivot = i
+        for k in range(i + 1, 3):
+            if abs(m[k][i]) > abs(m[pivot][i]):
+                pivot = k
+        if pivot != i:
+            m[i], m[pivot] = m[pivot], m[i]
+        if m[i][i] == 0.0:
+            raise ValueError("singular matrix in fit_quadratic")
+        for k in range(i + 1, 3):
+            factor = m[k][i] / m[i][i]
+            for j in range(i, 4):
+                m[k][j] -= factor * m[i][j]
+    c = m[2][3] / m[2][2]
+    b = (m[1][3] - m[1][2] * c) / m[1][1]
+    a = (m[0][3] - m[0][1] * b - m[0][2] * c) / m[0][0]
+    return a, b, c
 
 
 # ---------------------------------------------------------------------------

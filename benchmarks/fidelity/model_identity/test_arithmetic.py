@@ -42,6 +42,7 @@ from framework import (  # noqa: E402
     SCHEMA_VERSION,
     StealthChatClient,
     assert_comparable,
+    digit_match_rate,
     get_endpoint,
     load_dotenv,
     make_schedule,
@@ -55,11 +56,16 @@ from prompts import ARITHMETIC_PANEL_ID, ARITHMETIC_PROMPTS  # noqa: E402
 RUNS_DIR = _HERE / "runs"
 
 TEST_NAME = "arithmetic"
-DEFAULT_N_SAMPLES = 3
+# Research §1: ~20 samples per prompt × ~50 prompts gives ~1000 evaluations
+# — enough to detect the 5–15% accuracy gap typical of INT4 on long-form
+# math at p<0.01. With panel_size=100, n=20 puts us at 2000 calls per run.
+DEFAULT_N_SAMPLES = 20
 DEFAULT_MAX_TOKENS = 50
-DEFAULT_SCHEDULE_SEED = 20260425
+DEFAULT_SCHEDULE_SEED: int | None = None  # random per run; doesn't affect comparability
 DEFAULT_SLEEP_RANGE = (1.0, 4.0)
-FAIL_THRESHOLD_GAP = 0.05
+# Per-digit accuracy gap threshold. Per-digit metric is ~10x more sensitive
+# than whole-string match, so we tighten the threshold accordingly.
+FAIL_THRESHOLD_GAP = 0.02
 
 # Pull a long contiguous digit run, optional thousands-separators tolerated.
 _INT_RE = re.compile(r"-?\d[\d,]*")
@@ -91,7 +97,7 @@ def run_arithmetic(
     panel: Sequence[PromptItem] = ARITHMETIC_PROMPTS,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    schedule_seed: int = DEFAULT_SCHEDULE_SEED,
+    schedule_seed: int | None = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
@@ -99,7 +105,15 @@ def run_arithmetic(
 
     Returns `(RunResult, raw_rows)` — the `RunResult` is the comparable
     artifact; `raw_rows` is a per-call forensic log suitable for JSONL.
+
+    `schedule_seed=None` means "pick a fresh random seed per run." The
+    framework treats `schedule_seed` as a stealth knob (does not affect
+    comparability), so randomizing it defeats string-hash benchmark
+    detectors that look for the same call ordering on every run.
     """
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
     panel = list(panel)
     schedule = make_schedule(len(panel), n_samples, seed=schedule_seed)
     outcomes = [
@@ -192,11 +206,13 @@ class ArithmeticPromptComparison:
     expected: int
     digits: int
     reference_modal: int | None
-    reference_modal_count: int
-    reference_match: bool
+    reference_modal_freq: float
+    reference_modal_match: bool
+    reference_digit_accuracy: float
     target_modal: int | None
-    target_modal_count: int
-    target_match: bool
+    target_modal_freq: float
+    target_modal_match: bool
+    target_digit_accuracy: float
 
 
 @dataclass
@@ -207,36 +223,94 @@ class ArithmeticReport:
     panel_size: int
     usable_prompts: int
     n_samples: int
-    target_modal_accuracy: float
+    # Primary signal (research §1: ~10x more sensitive than whole-string match)
+    reference_digit_accuracy: float
+    target_digit_accuracy: float
+    digit_accuracy_gap_ref_minus_target: float
+    # Where in the answer the gap concentrates: research §1 notes the last
+    # digit is hardest under quantization (cascading carries), the first
+    # digit is most often confidently correct.
+    reference_first_digit_accuracy: float
+    target_first_digit_accuracy: float
+    reference_last_digit_accuracy: float
+    target_last_digit_accuracy: float
+    # Whole-string secondary metric, kept for human readability
     reference_modal_accuracy: float
+    target_modal_accuracy: float
     accuracy_gap_ref_minus_target: float
-    target_mean_intra_disagreement: float
-    reference_mean_intra_disagreement: float
+    # Mean modal-frequency across prompts. Research §1: "a stable mode at
+    # lower frequency is itself a quantization signature" — flatter logits
+    # break ties more often even at T=0, so the mode wins by less.
+    reference_mean_modal_freq: float
+    target_mean_modal_freq: float
     fail_threshold_gap_gt: float
     fail: bool
     per_prompt: list[ArithmeticPromptComparison]
 
 
-def _side_stats(completions: list[str]) -> dict | None:
+def _side_stats(completions: list[str], expected: int) -> dict | None:
+    """Aggregate per-prompt stats from one side's completions.
+
+    Computes:
+      modal answer + frequency (mode-count / n_samples),
+      mean per-digit accuracy across all completions (the primary signal),
+      first-digit and last-digit accuracy,
+      whole-string modal-match flag.
+    """
     if not completions:
         return None
     parsed = [_parse_int(c) for c in completions]
-    valid = [str(p) for p in parsed if p is not None]
-    modal_str, modal_count = modal(valid)
+    valid_strs = [str(p) for p in parsed if p is not None]
+    if not valid_strs:
+        return {
+            "modal": None, "modal_freq": 0.0, "modal_match": False,
+            "digit_acc": 0.0, "first_acc": 0.0, "last_acc": 0.0,
+        }
+    modal_str, modal_count = modal(valid_strs)
     modal_int = int(modal_str) if modal_str else None
-    intra = (len(completions) - modal_count) / len(completions)
-    return {"modal": modal_int, "modal_count": modal_count, "intra": intra}
+    modal_freq = modal_count / len(completions)
+    n = len(parsed)
+    digit_total = 0.0
+    first_total = 0
+    last_total = 0
+    counted = 0
+    for p in parsed:
+        rate, first_ok, last_ok = digit_match_rate(p, expected)
+        digit_total += rate
+        first_total += int(first_ok)
+        last_total += int(last_ok)
+        counted += 1
+    return {
+        "modal": modal_int,
+        "modal_freq": modal_freq,
+        "modal_match": modal_int == expected,
+        "digit_acc": digit_total / n,
+        "first_acc": first_total / n,
+        "last_acc": last_total / n,
+    }
 
 
 def compare_arithmetic(reference: RunResult, target: RunResult) -> ArithmeticReport:
-    """Pure comparison over two `RunResult`s. Raises if incompatible."""
+    """Pure comparison over two `RunResult`s. Raises if incompatible.
+
+    Primary fail signal is the per-digit accuracy gap (research §1: ~10x
+    more sensitive than whole-string match and shows *where* in the answer
+    the model fails). Whole-string modal accuracy and mean modal-frequency
+    are reported as corroborating signals.
+    """
     assert_comparable(reference, target, expected_test=TEST_NAME)
 
     per_prompt: list[ArithmeticPromptComparison] = []
-    ref_correct = 0
-    tgt_correct = 0
-    ref_intra_sum = 0.0
-    tgt_intra_sum = 0.0
+    ref_digit_sum = 0.0
+    tgt_digit_sum = 0.0
+    ref_modal_correct = 0
+    tgt_modal_correct = 0
+    ref_modal_freq_sum = 0.0
+    tgt_modal_freq_sum = 0.0
+    ref_first_sum = 0.0
+    tgt_first_sum = 0.0
+    ref_last_sum = 0.0
+    tgt_last_sum = 0.0
     usable = 0
 
     by_idx_ref = {p.prompt_idx: p for p in reference.prompts}
@@ -251,29 +325,35 @@ def compare_arithmetic(reference: RunResult, target: RunResult) -> ArithmeticRep
         expected = int(meta.get("expected"))
         digits = int(meta.get("digits", 0))
 
-        rs = _side_stats(rp.completions)
-        ts = _side_stats(tp.completions)
+        rs = _side_stats(rp.completions, expected)
+        ts = _side_stats(tp.completions, expected)
 
-        ref_match = bool(rs and rs["modal"] == expected)
-        tgt_match = bool(ts and ts["modal"] == expected)
         per_prompt.append(ArithmeticPromptComparison(
             prompt_idx=idx,
             name=rp.name,
             expected=expected,
             digits=digits,
             reference_modal=rs["modal"] if rs else None,
-            reference_modal_count=rs["modal_count"] if rs else 0,
-            reference_match=ref_match,
+            reference_modal_freq=round(rs["modal_freq"], 4) if rs else 0.0,
+            reference_modal_match=bool(rs and rs["modal_match"]),
+            reference_digit_accuracy=round(rs["digit_acc"], 4) if rs else 0.0,
             target_modal=ts["modal"] if ts else None,
-            target_modal_count=ts["modal_count"] if ts else 0,
-            target_match=tgt_match,
+            target_modal_freq=round(ts["modal_freq"], 4) if ts else 0.0,
+            target_modal_match=bool(ts and ts["modal_match"]),
+            target_digit_accuracy=round(ts["digit_acc"], 4) if ts else 0.0,
         ))
         if rs and ts:
             usable += 1
-            ref_correct += int(ref_match)
-            tgt_correct += int(tgt_match)
-            ref_intra_sum += rs["intra"]
-            tgt_intra_sum += ts["intra"]
+            ref_digit_sum += rs["digit_acc"]
+            tgt_digit_sum += ts["digit_acc"]
+            ref_modal_correct += int(rs["modal_match"])
+            tgt_modal_correct += int(ts["modal_match"])
+            ref_modal_freq_sum += rs["modal_freq"]
+            tgt_modal_freq_sum += ts["modal_freq"]
+            ref_first_sum += rs["first_acc"]
+            tgt_first_sum += ts["first_acc"]
+            ref_last_sum += rs["last_acc"]
+            tgt_last_sum += ts["last_acc"]
 
     if usable == 0:
         return ArithmeticReport(
@@ -283,19 +363,28 @@ def compare_arithmetic(reference: RunResult, target: RunResult) -> ArithmeticRep
             panel_size=reference.panel_size,
             usable_prompts=0,
             n_samples=reference.n_samples,
-            target_modal_accuracy=0.0,
+            reference_digit_accuracy=0.0,
+            target_digit_accuracy=0.0,
+            digit_accuracy_gap_ref_minus_target=0.0,
+            reference_first_digit_accuracy=0.0,
+            target_first_digit_accuracy=0.0,
+            reference_last_digit_accuracy=0.0,
+            target_last_digit_accuracy=0.0,
             reference_modal_accuracy=0.0,
+            target_modal_accuracy=0.0,
             accuracy_gap_ref_minus_target=0.0,
-            target_mean_intra_disagreement=0.0,
-            reference_mean_intra_disagreement=0.0,
+            reference_mean_modal_freq=0.0,
+            target_mean_modal_freq=0.0,
             fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
             fail=False,
             per_prompt=per_prompt,
         )
 
-    ref_acc = ref_correct / usable
-    tgt_acc = tgt_correct / usable
-    gap = ref_acc - tgt_acc
+    ref_digit = ref_digit_sum / usable
+    tgt_digit = tgt_digit_sum / usable
+    digit_gap = ref_digit - tgt_digit
+    ref_modal_acc = ref_modal_correct / usable
+    tgt_modal_acc = tgt_modal_correct / usable
     return ArithmeticReport(
         test_name=TEST_NAME,
         reference_label=reference.endpoint_label,
@@ -303,13 +392,20 @@ def compare_arithmetic(reference: RunResult, target: RunResult) -> ArithmeticRep
         panel_size=reference.panel_size,
         usable_prompts=usable,
         n_samples=reference.n_samples,
-        target_modal_accuracy=round(tgt_acc, 4),
-        reference_modal_accuracy=round(ref_acc, 4),
-        accuracy_gap_ref_minus_target=round(gap, 4),
-        target_mean_intra_disagreement=round(tgt_intra_sum / usable, 4),
-        reference_mean_intra_disagreement=round(ref_intra_sum / usable, 4),
+        reference_digit_accuracy=round(ref_digit, 4),
+        target_digit_accuracy=round(tgt_digit, 4),
+        digit_accuracy_gap_ref_minus_target=round(digit_gap, 4),
+        reference_first_digit_accuracy=round(ref_first_sum / usable, 4),
+        target_first_digit_accuracy=round(tgt_first_sum / usable, 4),
+        reference_last_digit_accuracy=round(ref_last_sum / usable, 4),
+        target_last_digit_accuracy=round(tgt_last_sum / usable, 4),
+        reference_modal_accuracy=round(ref_modal_acc, 4),
+        target_modal_accuracy=round(tgt_modal_acc, 4),
+        accuracy_gap_ref_minus_target=round(ref_modal_acc - tgt_modal_acc, 4),
+        reference_mean_modal_freq=round(ref_modal_freq_sum / usable, 4),
+        target_mean_modal_freq=round(tgt_modal_freq_sum / usable, 4),
         fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
-        fail=gap > FAIL_THRESHOLD_GAP,
+        fail=digit_gap > FAIL_THRESHOLD_GAP,
         per_prompt=per_prompt,
     )
 
@@ -330,7 +426,7 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
                         help=f"max_tokens per request (default {DEFAULT_MAX_TOKENS})")
     parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
-                        help="Schedule shuffle seed")
+                        help="Schedule shuffle seed (default: random per run)")
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()

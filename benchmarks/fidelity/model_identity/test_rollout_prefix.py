@@ -48,7 +48,9 @@ from framework import (  # noqa: E402
     get_endpoint,
     load_dotenv,
     make_schedule,
+    mean_pairwise_prefix,
     modal,
+    normalize_text,
     panel_hash,
     utc_stamp,
     write_run_artifacts,
@@ -60,12 +62,16 @@ RUNS_DIR = _HERE / "runs"
 TEST_NAME = "rollout_prefix"
 DEFAULT_N_SAMPLES = 10
 DEFAULT_MAX_TOKENS = 2000
-DEFAULT_SCHEDULE_SEED = 20260425
+DEFAULT_SCHEDULE_SEED: int | None = None
 DEFAULT_SLEEP_RANGE = (1.5, 5.5)
 FAIL_RATIO_THRESHOLD = 0.5
 
 
-def _mean_pairwise_prefix(samples: list[str]) -> float:
+def _intra_pairwise_prefix(samples: list[str]) -> float:
+    """Mean pairwise common-prefix length within one side's samples.
+
+    With T=0 batch nondeterminism, this is the per-prompt 'noise floor'
+    that the inter-side cross-pair statistic gets compared against."""
     if len(samples) < 2:
         return float(len(samples[0])) if samples else 0.0
     total = 0
@@ -83,12 +89,15 @@ def run_rollout_prefix(
     panel: Sequence[PromptItem] = ROLLOUT_PROMPTS,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    schedule_seed: int = DEFAULT_SCHEDULE_SEED,
+    schedule_seed: int | None = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
     """Run the rollout panel once against `endpoint`. Returns
     `(RunResult, raw_rows)`."""
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
     panel = list(panel)
     schedule = make_schedule(len(panel), n_samples, seed=schedule_seed)
     outcomes = [
@@ -178,7 +187,12 @@ class RolloutPromptComparison:
     n_target: int
     reference_intra_prefix_mean: float
     target_intra_prefix_mean: float
-    inter_prefix_chars: int
+    # Mean common-prefix length across all (ref, tgt) cross-pairs. Replaces
+    # the old modal-vs-modal singleton statistic, which collapsed under T=0
+    # batch noise to "common_prefix(r[0], t[0])" — random, not signal.
+    inter_pairwise_prefix_mean: float
+    # Modal-vs-modal kept as a forensic side report.
+    inter_modal_prefix_chars: int
     skipped: bool
 
 
@@ -190,14 +204,27 @@ class RolloutReport:
     panel_size: int
     usable_prompts: int
     n_samples: int
-    mean_inter_prefix_chars: float
+    # Primary statistic: cross-pair mean prefix between ref and tgt samples.
+    mean_inter_pairwise_prefix: float
     mean_reference_intra_prefix: float
     mean_target_intra_prefix: float
     intra_floor_chars: float
     inter_over_intra_floor_ratio: float
+    # Secondary modal-vs-modal report for human inspection / forensics.
+    mean_inter_modal_prefix_chars: float
     fail_threshold_lt: float
     fail: bool
     per_prompt: list[RolloutPromptComparison]
+
+
+def _norm_list(samples: list[str]) -> list[str]:
+    """Apply Unicode/whitespace normalization to a list of completions.
+
+    Some providers run a safety/rewrite pass that swaps smart quotes,
+    em-dashes, or NBSPs into the response. Without normalization a strict
+    character-level prefix comparison fires on those rewrites and looks
+    identical to a model swap."""
+    return [normalize_text(s) for s in samples]
 
 
 def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutReport:
@@ -207,7 +234,8 @@ def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutRe
     by_idx_tgt = {p.prompt_idx: p for p in target.prompts}
 
     per_prompt: list[RolloutPromptComparison] = []
-    inter_chars: list[int] = []
+    inter_pairwise_means: list[float] = []
+    inter_modal_chars: list[int] = []
     ref_intra_means: list[float] = []
     tgt_intra_means: list[float] = []
 
@@ -216,8 +244,8 @@ def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutRe
         tp = by_idx_tgt.get(idx)
         if tp is None:
             continue
-        r_samples = rp.completions
-        t_samples = tp.completions
+        r_samples = _norm_list(rp.completions)
+        t_samples = _norm_list(tp.completions)
         if not r_samples or not t_samples:
             per_prompt.append(RolloutPromptComparison(
                 prompt_idx=idx,
@@ -226,15 +254,17 @@ def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutRe
                 n_target=len(t_samples),
                 reference_intra_prefix_mean=0.0,
                 target_intra_prefix_mean=0.0,
-                inter_prefix_chars=0,
+                inter_pairwise_prefix_mean=0.0,
+                inter_modal_prefix_chars=0,
                 skipped=True,
             ))
             continue
         r_modal, _ = modal(r_samples)
         t_modal, _ = modal(t_samples)
-        r_intra = _mean_pairwise_prefix(r_samples)
-        t_intra = _mean_pairwise_prefix(t_samples)
-        inter = common_prefix_chars(r_modal, t_modal)
+        r_intra = _intra_pairwise_prefix(r_samples)
+        t_intra = _intra_pairwise_prefix(t_samples)
+        inter_pairwise = mean_pairwise_prefix(r_samples, t_samples)
+        inter_modal = common_prefix_chars(r_modal, t_modal)
         per_prompt.append(RolloutPromptComparison(
             prompt_idx=idx,
             name=rp.name,
@@ -242,14 +272,16 @@ def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutRe
             n_target=len(t_samples),
             reference_intra_prefix_mean=round(r_intra, 1),
             target_intra_prefix_mean=round(t_intra, 1),
-            inter_prefix_chars=inter,
+            inter_pairwise_prefix_mean=round(inter_pairwise, 1),
+            inter_modal_prefix_chars=inter_modal,
             skipped=False,
         ))
-        inter_chars.append(inter)
+        inter_pairwise_means.append(inter_pairwise)
+        inter_modal_chars.append(inter_modal)
         ref_intra_means.append(r_intra)
         tgt_intra_means.append(t_intra)
 
-    if not inter_chars:
+    if not inter_pairwise_means:
         return RolloutReport(
             test_name=TEST_NAME,
             reference_label=reference.endpoint_label,
@@ -257,33 +289,36 @@ def compare_rollout_prefix(reference: RunResult, target: RunResult) -> RolloutRe
             panel_size=reference.panel_size,
             usable_prompts=0,
             n_samples=reference.n_samples,
-            mean_inter_prefix_chars=0.0,
+            mean_inter_pairwise_prefix=0.0,
             mean_reference_intra_prefix=0.0,
             mean_target_intra_prefix=0.0,
             intra_floor_chars=0.0,
             inter_over_intra_floor_ratio=0.0,
+            mean_inter_modal_prefix_chars=0.0,
             fail_threshold_lt=FAIL_RATIO_THRESHOLD,
             fail=False,
             per_prompt=per_prompt,
         )
 
-    inter = mean(inter_chars)
+    inter_pairwise = mean(inter_pairwise_means)
+    inter_modal_mean = mean(inter_modal_chars)
     r_intra = mean(ref_intra_means)
     t_intra = mean(tgt_intra_means)
     floor = min(r_intra, t_intra)
-    ratio = (inter / floor) if floor > 0 else float("inf")
+    ratio = (inter_pairwise / floor) if floor > 0 else float("inf")
     return RolloutReport(
         test_name=TEST_NAME,
         reference_label=reference.endpoint_label,
         target_label=target.endpoint_label,
         panel_size=reference.panel_size,
-        usable_prompts=len(inter_chars),
+        usable_prompts=len(inter_pairwise_means),
         n_samples=reference.n_samples,
-        mean_inter_prefix_chars=round(inter, 1),
+        mean_inter_pairwise_prefix=round(inter_pairwise, 1),
         mean_reference_intra_prefix=round(r_intra, 1),
         mean_target_intra_prefix=round(t_intra, 1),
         intra_floor_chars=round(floor, 1),
         inter_over_intra_floor_ratio=round(ratio, 3),
+        mean_inter_modal_prefix_chars=round(inter_modal_mean, 1),
         fail_threshold_lt=FAIL_RATIO_THRESHOLD,
         fail=ratio < FAIL_RATIO_THRESHOLD,
         per_prompt=per_prompt,
@@ -305,7 +340,8 @@ def main() -> int:
                         help="Truncate panel for cheap dry runs")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
                         help=f"max_tokens per request (default {DEFAULT_MAX_TOKENS})")
-    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
+                        help="Schedule shuffle seed (default: random per run)")
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()

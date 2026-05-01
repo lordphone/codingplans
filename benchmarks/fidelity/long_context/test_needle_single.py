@@ -67,32 +67,46 @@ from framework import (  # noqa: E402
 )
 from needle import (  # noqa: E402
     FILLER_CORPUS_VERSION,
-    build_single_needle_messages,
+    build_single_needle_paraphrased_messages,
     format_panel_signature,
     generate_filler,
-    insert_at_depth,
+    insert_many_at_depths,
     make_length_depth_grid,
 )
 
 RUNS_DIR = _HERE / "runs"
 
 TEST_NAME = "needle_single"
-DEFAULT_N_SAMPLES = 1
+# Research §4: "Target a per-cell n large enough to put the binomial 95%
+# CI inside ±10%, i.e. n ≥ 10." We default to 5 (cost-conscious for solo
+# dev) and document n=10 as the recommended setting.
+DEFAULT_N_SAMPLES = 5
 DEFAULT_MAX_TOKENS = 50
-DEFAULT_SCHEDULE_SEED = 20260425
+DEFAULT_SCHEDULE_SEED: int | None = None
 DEFAULT_SLEEP_RANGE = (1.5, 5.5)
 DEFAULT_FILLER_SEED = 314159
 
 # Sweep defaults. Lengths are in CHARACTERS, not tokens; the rough rule of
-# thumb for English/code is ~3.5 chars per token, so 32k chars ≈ 9k tokens.
-# Default grid stays well under common 32k-token context windows.
-DEFAULT_LENGTHS = (4_000, 8_000, 16_000, 32_000)
+# thumb for English/code is ~3.5 chars per token, so 128k chars ≈ 37k
+# tokens. Bumped up from the original 32k-char ceiling so the grid spans
+# typical truncation regimes for modern long-context models.
+DEFAULT_LENGTHS = (8_000, 16_000, 32_000, 64_000, 128_000)
 DEFAULT_DEPTHS = (0.05, 0.25, 0.5, 0.75, 0.95)
 
 # Fail when target accuracy underperforms reference by more than this. Set
 # wide on purpose — we expect a few stochastic misses on T=0 even for
 # matched endpoints. Sharper cell-level signals are surfaced in per_cell.
 FAIL_THRESHOLD_GAP = 0.20
+
+# Number of distractor needles inserted alongside the true one. Research
+# §4 false positives: "If the needle is the only sentence containing
+# 'San Francisco,' the model can find it via lexical-substring attention."
+# Distractors with similar names force the model to actually read.
+DEFAULT_DISTRACTORS = 2
+
+# Suffix labels for distractor needles. The model is told to find
+# `_CURRENT` and ignore these.
+_DISTRACTOR_SUFFIXES = ("LEGACY", "RETIRED", "STAGING", "DEPRECATED", "BACKUP")
 
 
 def _needle_value(rng: random.Random) -> str:
@@ -110,38 +124,72 @@ def _build_panel(
     lengths: Sequence[int],
     depths: Sequence[float],
     filler_seed: int,
+    distractors: int = DEFAULT_DISTRACTORS,
 ) -> tuple[list[PromptItem], str]:
     """Build the single-needle panel and return (panel, panel_id).
 
-    Each cell gets a deterministic needle value derived from a panel-level
-    PRNG seeded with `filler_seed`. The filler itself is generated once at
-    the longest length and sliced for each cell — that keeps every shorter
-    cell's haystack a strict prefix of the longer ones, so length effects
-    are isolated from "different filler bytes" effects."""
+    Each cell plants one true needle (`# OPERATIONAL_TOKEN_CURRENT = X-Y`)
+    at the cell's depth, plus `distractors` other needles with similar
+    shape (`_LEGACY`, `_RETIRED`, etc.) at random other depths in the
+    same haystack. Distractor values use the same shape as the true value
+    so the model cannot use shape alone to disambiguate; it must read
+    the suffix.
+
+    The filler itself is generated once at the longest length and sliced
+    for each cell — every shorter cell's haystack is a strict prefix of
+    the longer ones, so length effects are isolated from "different
+    filler bytes" effects.
+    """
     needle_rng = random.Random(filler_seed ^ 0xA5A5A5A5)  # decorrelate from filler stream
     base_filler = generate_filler(max(lengths), seed=filler_seed)
+
+    if distractors > len(_DISTRACTOR_SUFFIXES):
+        raise ValueError(
+            f"distractors={distractors} exceeds available suffix labels "
+            f"({len(_DISTRACTOR_SUFFIXES)})"
+        )
 
     panel: list[PromptItem] = []
     for length, depth in make_length_depth_grid(lengths, depths):
         # Fresh random-looking but deterministic value per (length, depth).
         value = _needle_value(needle_rng)
         haystack = base_filler[:length]
-        needle_line = f"# UNLOCK_CODE = {value}"
-        prompt_text_filler = insert_at_depth(haystack, needle_line, depth)
+
+        # True needle at the cell's depth.
+        lines: list[tuple[str, float]] = [
+            (f"# OPERATIONAL_TOKEN_CURRENT = {value}", depth),
+        ]
+        # Distractor needles at evenly-spaced *other* depths (offset from
+        # the true one so they don't collide on the same line). Each
+        # distractor gets a deterministic but unrelated value. We pick
+        # depths that are at least 0.10 away from the true depth and from
+        # each other, in order around the depth circle.
+        for k in range(distractors):
+            distractor_depth = (depth + (k + 1) / (distractors + 1)) % 1.0
+            distractor_value = _needle_value(needle_rng)
+            suffix = _DISTRACTOR_SUFFIXES[k]
+            lines.append(
+                (f"# OPERATIONAL_TOKEN_{suffix} = {distractor_value}", distractor_depth)
+            )
+        prompt_text_filler = insert_many_at_depths(haystack, lines)
         panel.append(PromptItem(
             name=f"L{length}_D{depth:g}",
-            messages=build_single_needle_messages(prompt_text_filler),
+            messages=build_single_needle_paraphrased_messages(prompt_text_filler),
             meta={
                 "length_chars": length,
                 "depth": depth,
                 "expected": value,
+                "distractors": distractors,
             },
         ))
 
+    # Bumped v1 -> v2: panel content changed (paraphrased query, distractors,
+    # different lengths). Old artifacts no longer comparable.
     panel_id = (
-        f"needle_single_v1__"
+        f"needle_single_v2__"
         f"L{format_panel_signature(list(lengths))}__"
         f"D{format_panel_signature(list(depths))}__"
+        f"X{distractors}__"
         f"s{filler_seed}__"
         f"filler{FILLER_CORPUS_VERSION}"
     )
@@ -180,15 +228,20 @@ def run_single_needle(
     lengths: Sequence[int] = DEFAULT_LENGTHS,
     depths: Sequence[float] = DEFAULT_DEPTHS,
     filler_seed: int = DEFAULT_FILLER_SEED,
+    distractors: int = DEFAULT_DISTRACTORS,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    schedule_seed: int = DEFAULT_SCHEDULE_SEED,
+    schedule_seed: int | None = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
     """Run the single-needle panel once against `endpoint`."""
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
     panel, panel_id = _build_panel(
-        lengths=lengths, depths=depths, filler_seed=filler_seed
+        lengths=lengths, depths=depths, filler_seed=filler_seed,
+        distractors=distractors,
     )
     schedule = make_schedule(len(panel), n_samples, seed=schedule_seed)
     outcomes = [
@@ -301,8 +354,20 @@ class SingleNeedleReport:
     # at that length. Used to spot context truncation cliffs.
     reference_length_accuracy: dict[int, float]
     target_length_accuracy: dict[int, float]
+    # Largest consecutive-length recall drop on each side. A truncation
+    # event manifests as a sharp transition between two adjacent length
+    # columns (research §4: "A truncation event will be visible as a
+    # sharp transition between two adjacent length columns"). Reported as
+    # (length_at_top, length_at_bottom, drop). The cliff_gap field is
+    # target_cliff_drop minus reference_cliff_drop — positive means the
+    # target has a sharper cliff than the reference (i.e. is truncating
+    # earlier or harder).
+    reference_max_length_cliff: dict[str, float]
+    target_max_length_cliff: dict[str, float]
+    cliff_drop_gap_target_minus_ref: float
     # Depth-axis curves: index by depth, mean recall across all lengths
-    # at that depth. Used to spot KV-cache middle-depth sag.
+    # at that depth. Documented for completeness — research §4 warns this
+    # is dominated by intrinsic lost-in-the-middle and is NOT the signal.
     reference_depth_accuracy: dict[str, float]
     target_depth_accuracy: dict[str, float]
     fail_threshold_gap_gt: float
@@ -320,6 +385,30 @@ def _match_rate(completions: list[str], expected: str) -> tuple[float, int]:
 
 def _bucket_mean(by_key: dict[object, list[float]]) -> dict[object, float]:
     return {k: (sum(v) / len(v) if v else 0.0) for k, v in by_key.items()}
+
+
+def _max_length_cliff(length_accuracy: dict[int, float]) -> dict[str, float]:
+    """Find the steepest drop between two consecutive lengths.
+
+    Returns {"length_top": L1, "length_bottom": L2, "drop": acc(L1)-acc(L2)}.
+    Empty dict if fewer than 2 lengths."""
+    if len(length_accuracy) < 2:
+        return {}
+    items = sorted(length_accuracy.items())  # ascending by length
+    best_drop = float("-inf")
+    best = (0, 0)
+    for (l1, a1), (l2, a2) in zip(items, items[1:]):
+        drop = a1 - a2
+        if drop > best_drop:
+            best_drop = drop
+            best = (l1, l2)
+    if best_drop == float("-inf"):
+        return {}
+    return {
+        "length_top": float(best[0]),
+        "length_bottom": float(best[1]),
+        "drop": round(best_drop, 4),
+    }
 
 
 def compare_single_needle(
@@ -384,6 +473,9 @@ def compare_single_needle(
             accuracy_gap_ref_minus_target=0.0,
             reference_length_accuracy={},
             target_length_accuracy={},
+            reference_max_length_cliff={},
+            target_max_length_cliff={},
+            cliff_drop_gap_target_minus_ref=0.0,
             reference_depth_accuracy={},
             target_depth_accuracy={},
             fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
@@ -393,6 +485,12 @@ def compare_single_needle(
 
     ref_acc = ref_total / usable
     tgt_acc = tgt_total / usable
+    ref_len_acc = {k: round(v, 4) for k, v in _bucket_mean(ref_len_buckets).items()}
+    tgt_len_acc = {k: round(v, 4) for k, v in _bucket_mean(tgt_len_buckets).items()}
+    ref_cliff = _max_length_cliff({int(k): v for k, v in ref_len_acc.items()})
+    tgt_cliff = _max_length_cliff({int(k): v for k, v in tgt_len_acc.items()})
+    ref_drop = ref_cliff.get("drop", 0.0)
+    tgt_drop = tgt_cliff.get("drop", 0.0)
     return SingleNeedleReport(
         test_name=TEST_NAME,
         reference_label=reference.endpoint_label,
@@ -403,8 +501,11 @@ def compare_single_needle(
         reference_overall_accuracy=round(ref_acc, 4),
         target_overall_accuracy=round(tgt_acc, 4),
         accuracy_gap_ref_minus_target=round(ref_acc - tgt_acc, 4),
-        reference_length_accuracy={k: round(v, 4) for k, v in _bucket_mean(ref_len_buckets).items()},
-        target_length_accuracy={k: round(v, 4) for k, v in _bucket_mean(tgt_len_buckets).items()},
+        reference_length_accuracy=ref_len_acc,
+        target_length_accuracy=tgt_len_acc,
+        reference_max_length_cliff=ref_cliff,
+        target_max_length_cliff=tgt_cliff,
+        cliff_drop_gap_target_minus_ref=round(tgt_drop - ref_drop, 4),
         reference_depth_accuracy={k: round(v, 4) for k, v in _bucket_mean(ref_dep_buckets).items()},
         target_depth_accuracy={k: round(v, 4) for k, v in _bucket_mean(tgt_dep_buckets).items()},
         fail_threshold_gap_gt=FAIL_THRESHOLD_GAP,
@@ -439,10 +540,14 @@ def main() -> int:
                         default=list(DEFAULT_DEPTHS),
                         help="Comma-separated fractional depths in [0,1]")
     parser.add_argument("--filler-seed", type=int, default=DEFAULT_FILLER_SEED)
+    parser.add_argument("--distractors", type=int, default=DEFAULT_DISTRACTORS,
+                        help=f"Number of distractor needles per haystack "
+                             f"(default {DEFAULT_DISTRACTORS}, max "
+                             f"{len(_DISTRACTOR_SUFFIXES)})")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
                         help=f"max_tokens per request (default {DEFAULT_MAX_TOKENS})")
     parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
-                        help="Schedule shuffle seed")
+                        help="Schedule shuffle seed (default: random per run)")
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()
@@ -463,6 +568,7 @@ def main() -> int:
         lengths=args.lengths,
         depths=args.depths,
         filler_seed=args.filler_seed,
+        distractors=args.distractors,
         n_samples=args.n,
         max_tokens=args.max_tokens,
         schedule_seed=args.seed,

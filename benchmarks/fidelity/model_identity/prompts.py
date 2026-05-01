@@ -342,37 +342,82 @@ assert len(ROLLOUT_PROMPTS) == 20
 # single item the prompt text is fixed across runs (identical params is the
 # whole point of T=0 N-shot modal sampling).
 
+# Stronger anti-CoT framing than the IDE default. Research §1: "Strip CoT.
+# A single-shot 'Answer with only the number' prompt with no CoT maximizes
+# the INT4 signal." The stricter system message survives most providers'
+# default reasoning-channel prompts.
+_SYS_ARITH = (
+    "You are an AI coding assistant integrated into the user's code editor. "
+    "When the user asks for an exact numeric value to paste into source code, "
+    "answer with only the integer — no thinking out loud, no step-by-step "
+    "work, no prose, no markdown, no code fences, no commas, no scientific "
+    "notation, no leading zeros."
+)
+
 _ARITH_FRAMINGS = (
     "I'm writing a unit-test fixture and need the exact value of {a} * {b}. "
-    "Reply with the integer only — no commas, no scientific notation, no prose.",
+    "Reply with the integer only — no commas, no scientific notation, no prose, "
+    "no reasoning, no work shown.",
     "Quick golden value for a regression test: what is {a} * {b}? "
-    "Just the integer, no commas, no formatting.",
+    "Just the integer, no commas, no formatting, no work shown.",
     "Sanity-checking a SQL migration that computes {a} * {b}. Give me the exact "
-    "product as a plain integer, no commas, no thousands separators.",
+    "product as a plain integer, no commas, no thousands separators, no reasoning.",
     "I need a constant in a config file equal to {a} * {b}. Reply with only the "
-    "integer — no commas, no scientific notation.",
+    "integer — no commas, no scientific notation, no prose.",
     "Need to hard-code the value of {a} * {b} in a Go test. Reply with the integer "
-    "only, no commas.",
+    "only, no commas, no work shown.",
 )
 
 
-def _build_arithmetic_panel(n: int = 100, seed: int = 20260425) -> list[PromptItem]:
+def _is_trivial_operand(n: int) -> bool:
+    """Reject operands that hit "easy" tokenization or arithmetic boundaries.
+
+    Research §1 false-positive: 'Avoid numbers that are "trivial"
+    tokenization boundaries (multiples of 1000, repeating digits,
+    palindromes).' These collide with high-probability tokens in BPE
+    tokenizers and give the model an easy shortcut, masking quantization
+    noise that would otherwise show up as digit errors."""
+    s = str(n)
+    if n % 1000 == 0:
+        return True
+    if s == s[::-1]:  # palindrome
+        return True
+    if len(set(s)) == 1:  # repdigit (e.g. 4444)
+        return True
+    if s.endswith("00") or s.endswith("000"):
+        return True
+    return False
+
+
+def _sample_operand(rng: random.Random, digits: int) -> int:
+    lo = 10 ** (digits - 1)
+    hi = 10 ** digits - 1
+    while True:
+        n = rng.randint(lo, hi)
+        if not _is_trivial_operand(n):
+            return n
+
+
+def _build_arithmetic_panel(seed: int = 20260425) -> list[PromptItem]:
+    """100 multiplications, weighted toward 4x4 and 5x5.
+
+    Research §1: "Operand length: 4x4 digit and 5x5 digit multiplication is
+    the sweet spot. ... Use a graduated design ... with most samples at 4x4
+    and 5x5." Above 6x6 even BF16 frontier models are near saturation, so
+    the gap collapses to noise. We allocate 40/40/20 across 4/5/6 digits."""
     rng = random.Random(seed)
+    splits = [(4, 40), (5, 40), (6, 20)]
     items: list[PromptItem] = []
-    # Roughly 1/3 each of 4x4, 5x5, 6x6 digit multiplications.
-    splits = [(4, n // 3), (5, n // 3), (6, n - 2 * (n // 3))]
     idx = 0
     for digits, count in splits:
-        lo = 10 ** (digits - 1)
-        hi = 10 ** digits - 1
         for _ in range(count):
-            a = rng.randint(lo, hi)
-            b = rng.randint(lo, hi)
+            a = _sample_operand(rng, digits)
+            b = _sample_operand(rng, digits)
             framing = rng.choice(_ARITH_FRAMINGS)
             items.append(
                 PromptItem(
                     name=f"mul{digits}x{digits}_{idx:03d}",
-                    messages=_msgs(_SYS_IDE, framing.format(a=a, b=b)),
+                    messages=_msgs(_SYS_ARITH, framing.format(a=a, b=b)),
                     meta={"a": a, "b": b, "expected": a * b, "digits": digits},
                 )
             )
@@ -381,7 +426,10 @@ def _build_arithmetic_panel(n: int = 100, seed: int = 20260425) -> list[PromptIt
     return items
 
 
-ARITHMETIC_PANEL_ID = "arithmetic-v1"
+# Bumped v1 -> v2: panel content changed (operand filter, weighted split,
+# stricter system prompt). Old artifacts are no longer comparable; that's
+# intentional — `panel_hash` will refuse to mix v1 and v2 runs.
+ARITHMETIC_PANEL_ID = "arithmetic-v2"
 ARITHMETIC_PROMPTS: List[PromptItem] = _build_arithmetic_panel()
 assert len(ARITHMETIC_PROMPTS) == 100
 

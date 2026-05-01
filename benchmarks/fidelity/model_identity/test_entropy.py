@@ -2,23 +2,37 @@
 """Test 6 — Sampling entropy (single-endpoint runner + comparator).
 
 For each prompt, sample N completions at temperature=1, top_p=1; bucket each
-by its first whitespace-bounded token (a tokenizer-free proxy for the
-model's first emitted token); compute Shannon entropy per prompt.
+by its normalized first-word token (case-folded, punctuation-stripped — see
+`framework.first_word`). Compute Shannon entropy, Renyi-2 collision
+entropy, and rank-1 mass per prompt.
 
 Quantization tends to flatten logit distributions, which raises sampling
-entropy at fixed T. Comparison aggregates the per-prompt
-target/reference entropy ratio and fails if a majority of prompts exceed
-1.15.
+entropy and lowers rank-1 mass at fixed T. Provider-side logit warping
+(secret top-k, repetition penalty) can also *lower* entropy — so the
+threshold check is symmetric: fail when |log(ratio)| exceeds the
+threshold in either direction.
+
+The primary statistic is **Renyi-2 entropy** (collision entropy):
+research §3 notes it is much more sample-efficient than Shannon at
+moderate N (a clean Shannon estimate needs ~10k samples per prompt;
+Renyi-2 ~1k; rank-1 mass ~200 for a 5% shift). Shannon is reported
+alongside for human inspection.
+
+This test is the most fragile of the suite under text-only sampling.
+Research §3: "design `test_entropy.py` such that it auto-falls-back to
+logprob-based KL divergence when the provider returns logprobs." That
+fallback is left as future work and noted in fidelity/THREATS.md.
 
 Usage:
-  python benchmarks/fidelity/model_identity/test_entropy.py --endpoint glm5-official --n 50
-  python benchmarks/fidelity/model_identity/test_entropy.py --endpoint glm5-alibaba --n 50
+  python benchmarks/fidelity/model_identity/test_entropy.py --endpoint glm5-official --n 200
+  python benchmarks/fidelity/model_identity/test_entropy.py --endpoint glm5-alibaba --n 200
   python benchmarks/fidelity/compare.py runs/<ref>.summary.json runs/<target>.summary.json
 """
 
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +58,8 @@ from framework import (  # noqa: E402
     load_dotenv,
     make_schedule,
     panel_hash,
+    rank1_mass,
+    renyi2_entropy,
     shannon_entropy,
     utc_stamp,
     write_run_artifacts,
@@ -53,11 +69,19 @@ from prompts import ENTROPY_PANEL_ID, ENTROPY_PROMPTS  # noqa: E402
 RUNS_DIR = _HERE / "runs"
 
 TEST_NAME = "entropy"
-DEFAULT_N_SAMPLES = 50
+# Research §3: text-only entropy detection is intrinsically weak; the
+# expected INT4 effect size is 0.05–0.3 bits. N=200 is the practical
+# minimum for a usable Renyi-2 estimate; ~1000 would be ideal.
+DEFAULT_N_SAMPLES = 200
 DEFAULT_MAX_TOKENS = 5
-DEFAULT_SCHEDULE_SEED = 20260425
+DEFAULT_SCHEDULE_SEED: int | None = None
 DEFAULT_SLEEP_RANGE = (1.0, 4.0)
+# Symmetric threshold on the Renyi-2 entropy ratio. Research §3 false
+# positives: provider top-k truncation can *lower* entropy (opposite
+# direction from quantization). We fail in either direction so a covert
+# tail-truncation also gets caught.
 FAIL_RATIO_THRESHOLD = 1.15
+FAIL_LOG_RATIO_THRESHOLD = math.log2(FAIL_RATIO_THRESHOLD)
 
 
 def run_entropy(
@@ -66,12 +90,15 @@ def run_entropy(
     panel: Sequence[PromptItem] = ENTROPY_PROMPTS,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    schedule_seed: int = DEFAULT_SCHEDULE_SEED,
+    schedule_seed: int | None = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
     """Run the entropy panel once against `endpoint`. Returns
     `(RunResult, raw_rows)`."""
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
     panel = list(panel)
     schedule = make_schedule(len(panel), n_samples, seed=schedule_seed)
     outcomes = [
@@ -161,9 +188,16 @@ class EntropyPromptComparison:
     n_target: int
     reference_unique_first_words: int
     target_unique_first_words: int
-    reference_first_word_entropy_bits: float
-    target_first_word_entropy_bits: float
-    entropy_ratio_target_over_reference: float | None
+    reference_shannon_bits: float
+    target_shannon_bits: float
+    reference_renyi2_bits: float
+    target_renyi2_bits: float
+    reference_rank1_mass: float
+    target_rank1_mass: float
+    # Renyi-2 ratio is the primary per-prompt signal. log2-ratio lets us
+    # apply a symmetric threshold (entropy can move in either direction).
+    renyi2_ratio_target_over_reference: float | None
+    abs_log2_renyi2_ratio: float | None
     skipped: bool
 
 
@@ -175,8 +209,15 @@ class EntropyReport:
     panel_size: int
     usable_prompts: int
     n_samples: int
-    mean_entropy_ratio: float
-    median_entropy_ratio: float
+    # Primary statistic: Renyi-2 collision-entropy ratio (target/reference).
+    # Reported alongside Shannon for human inspection. Mean rank-1 mass is
+    # the fallback signal at small N.
+    mean_renyi2_ratio: float
+    median_renyi2_ratio: float
+    mean_shannon_ratio: float
+    mean_reference_rank1_mass: float
+    mean_target_rank1_mass: float
+    rank1_mass_gap_ref_minus_target: float
     prompts_over_threshold: int
     fraction_over_threshold: float
     ratio_threshold: float
@@ -185,13 +226,23 @@ class EntropyReport:
 
 
 def compare_entropy(reference: RunResult, target: RunResult) -> EntropyReport:
+    """Symmetric Renyi-2 ratio test on first-token distributions.
+
+    Research §3: INT4 quantization typically *raises* sampling entropy
+    (flatter logits → ratio > 1); provider top-k / repetition-penalty
+    warping typically *lowers* it (ratio < 1). We test |log2(ratio)| so
+    either direction triggers a fail."""
     assert_comparable(reference, target, expected_test=TEST_NAME)
 
     by_idx_ref = {p.prompt_idx: p for p in reference.prompts}
     by_idx_tgt = {p.prompt_idx: p for p in target.prompts}
 
     per_prompt: list[EntropyPromptComparison] = []
-    ratios: list[float] = []
+    renyi_ratios: list[float] = []
+    shannon_ratios: list[float] = []
+    abs_log_ratios: list[float] = []
+    ref_rank1: list[float] = []
+    tgt_rank1: list[float] = []
 
     for idx in sorted(by_idx_ref):
         rp = by_idx_ref[idx]
@@ -208,16 +259,37 @@ def compare_entropy(reference: RunResult, target: RunResult) -> EntropyReport:
                 n_target=len(t_words),
                 reference_unique_first_words=len(set(r_words)),
                 target_unique_first_words=len(set(t_words)),
-                reference_first_word_entropy_bits=0.0,
-                target_first_word_entropy_bits=0.0,
-                entropy_ratio_target_over_reference=None,
+                reference_shannon_bits=0.0,
+                target_shannon_bits=0.0,
+                reference_renyi2_bits=0.0,
+                target_renyi2_bits=0.0,
+                reference_rank1_mass=0.0,
+                target_rank1_mass=0.0,
+                renyi2_ratio_target_over_reference=None,
+                abs_log2_renyi2_ratio=None,
                 skipped=True,
             ))
             continue
-        h_r = shannon_entropy(r_words)
-        h_t = shannon_entropy(t_words)
-        ratio = (h_t / h_r) if h_r > 0 else float("inf")
-        ratios.append(ratio)
+        h_r_shannon = shannon_entropy(r_words)
+        h_t_shannon = shannon_entropy(t_words)
+        h_r_renyi = renyi2_entropy(r_words)
+        h_t_renyi = renyi2_entropy(t_words)
+        r_r1 = rank1_mass(r_words)
+        t_r1 = rank1_mass(t_words)
+        ref_rank1.append(r_r1)
+        tgt_rank1.append(t_r1)
+        if h_r_shannon > 0:
+            shannon_ratios.append(h_t_shannon / h_r_shannon)
+        # Renyi-2 ratio + abs log2 for symmetric threshold. Skip when the
+        # reference is itself ~0 (degenerate prompt with one dominant
+        # answer); rank-1 mass picks up the slack at the aggregate level.
+        renyi_ratio: float | None = None
+        abs_log_ratio: float | None = None
+        if h_r_renyi > 0 and h_t_renyi > 0:
+            renyi_ratio = h_t_renyi / h_r_renyi
+            abs_log_ratio = abs(math.log2(renyi_ratio))
+            renyi_ratios.append(renyi_ratio)
+            abs_log_ratios.append(abs_log_ratio)
         per_prompt.append(EntropyPromptComparison(
             prompt_idx=idx,
             name=rp.name,
@@ -225,13 +297,22 @@ def compare_entropy(reference: RunResult, target: RunResult) -> EntropyReport:
             n_target=len(t_words),
             reference_unique_first_words=len(set(r_words)),
             target_unique_first_words=len(set(t_words)),
-            reference_first_word_entropy_bits=round(h_r, 4),
-            target_first_word_entropy_bits=round(h_t, 4),
-            entropy_ratio_target_over_reference=round(ratio, 4),
+            reference_shannon_bits=round(h_r_shannon, 4),
+            target_shannon_bits=round(h_t_shannon, 4),
+            reference_renyi2_bits=round(h_r_renyi, 4),
+            target_renyi2_bits=round(h_t_renyi, 4),
+            reference_rank1_mass=round(r_r1, 4),
+            target_rank1_mass=round(t_r1, 4),
+            renyi2_ratio_target_over_reference=(
+                None if renyi_ratio is None else round(renyi_ratio, 4)
+            ),
+            abs_log2_renyi2_ratio=(
+                None if abs_log_ratio is None else round(abs_log_ratio, 4)
+            ),
             skipped=False,
         ))
 
-    if not ratios:
+    if not renyi_ratios:
         return EntropyReport(
             test_name=TEST_NAME,
             reference_label=reference.endpoint_label,
@@ -239,8 +320,12 @@ def compare_entropy(reference: RunResult, target: RunResult) -> EntropyReport:
             panel_size=reference.panel_size,
             usable_prompts=0,
             n_samples=reference.n_samples,
-            mean_entropy_ratio=0.0,
-            median_entropy_ratio=0.0,
+            mean_renyi2_ratio=0.0,
+            median_renyi2_ratio=0.0,
+            mean_shannon_ratio=0.0,
+            mean_reference_rank1_mass=0.0,
+            mean_target_rank1_mass=0.0,
+            rank1_mass_gap_ref_minus_target=0.0,
             prompts_over_threshold=0,
             fraction_over_threshold=0.0,
             ratio_threshold=FAIL_RATIO_THRESHOLD,
@@ -248,20 +333,28 @@ def compare_entropy(reference: RunResult, target: RunResult) -> EntropyReport:
             per_prompt=per_prompt,
         )
 
-    over = sum(1 for r in ratios if r > FAIL_RATIO_THRESHOLD)
+    over = sum(1 for lr in abs_log_ratios if lr > FAIL_LOG_RATIO_THRESHOLD)
+    sorted_ratios = sorted(renyi_ratios)
+    median_renyi = sorted_ratios[len(sorted_ratios) // 2]
+    ref_r1_mean = mean(ref_rank1) if ref_rank1 else 0.0
+    tgt_r1_mean = mean(tgt_rank1) if tgt_rank1 else 0.0
     return EntropyReport(
         test_name=TEST_NAME,
         reference_label=reference.endpoint_label,
         target_label=target.endpoint_label,
         panel_size=reference.panel_size,
-        usable_prompts=len(ratios),
+        usable_prompts=len(renyi_ratios),
         n_samples=reference.n_samples,
-        mean_entropy_ratio=round(mean(ratios), 4),
-        median_entropy_ratio=round(sorted(ratios)[len(ratios) // 2], 4),
+        mean_renyi2_ratio=round(mean(renyi_ratios), 4),
+        median_renyi2_ratio=round(median_renyi, 4),
+        mean_shannon_ratio=round(mean(shannon_ratios), 4) if shannon_ratios else 0.0,
+        mean_reference_rank1_mass=round(ref_r1_mean, 4),
+        mean_target_rank1_mass=round(tgt_r1_mean, 4),
+        rank1_mass_gap_ref_minus_target=round(ref_r1_mean - tgt_r1_mean, 4),
         prompts_over_threshold=over,
-        fraction_over_threshold=round(over / len(ratios), 4),
+        fraction_over_threshold=round(over / len(abs_log_ratios), 4),
         ratio_threshold=FAIL_RATIO_THRESHOLD,
-        fail=(over / len(ratios)) > 0.5,
+        fail=(over / len(abs_log_ratios)) > 0.5,
         per_prompt=per_prompt,
     )
 
@@ -276,12 +369,14 @@ def main() -> int:
     parser.add_argument("--endpoint", required=True,
                         help="Endpoint slug from targets.ENDPOINTS")
     parser.add_argument("--n", type=int, default=DEFAULT_N_SAMPLES,
-                        help=f"Samples per prompt (default {DEFAULT_N_SAMPLES}; spec: 200)")
+                        help=f"Samples per prompt (default {DEFAULT_N_SAMPLES}; "
+                             f"~1000 for clean Renyi-2)")
     parser.add_argument("--panel-size", type=int, default=len(ENTROPY_PROMPTS),
                         help="Truncate panel for cheap dry runs")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
                         help=f"max_tokens per request (default {DEFAULT_MAX_TOKENS})")
-    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
+                        help="Schedule shuffle seed (default: random per run)")
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()

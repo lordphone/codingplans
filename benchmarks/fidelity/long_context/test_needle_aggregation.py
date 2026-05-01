@@ -79,18 +79,22 @@ from needle import (  # noqa: E402
 RUNS_DIR = _HERE / "runs"
 
 TEST_NAME = "needle_aggregation"
-DEFAULT_N_SAMPLES = 1
+# Research §6: ask for both count *and* sum to disambiguate truncation
+# (count off) from arithmetic error (count right, sum wrong) from
+# KV-cache quant (swiss-cheese miss pattern). Index-tagged needles let
+# the comparator detect contiguous-tail vs scattered loss patterns.
+DEFAULT_N_SAMPLES = 5
 DEFAULT_MAX_TOKENS = 30
-DEFAULT_SCHEDULE_SEED = 20260425
+DEFAULT_SCHEDULE_SEED: int | None = None
 DEFAULT_SLEEP_RANGE = (1.5, 5.5)
 DEFAULT_FILLER_SEED = 161803
 
-DEFAULT_LENGTHS = (4_000, 8_000, 16_000, 32_000)
+DEFAULT_LENGTHS = (8_000, 16_000, 32_000, 64_000, 128_000)
 
 # Number of values scattered through the filler. Big enough that a small
-# truncation produces a noticeable undercount, small enough that K=12
-# 2-digit integers comfortably fit in the model's working memory if the
-# context is intact.
+# truncation produces a noticeable undercount, small enough that 2-digit
+# integers comfortably fit in the model's working memory if the context
+# is intact.
 DEFAULT_M = 12
 
 # Each scattered value is in [10, 99]. Two-digit integers are wide enough
@@ -112,24 +116,30 @@ def _make_aggregation_setup(
     m: int,
     filler_seed: int,
     instance_seed: int,
-) -> tuple[list[tuple[float, int]], int]:
-    """Choose the M (depth, value) pairs for one panel item.
+) -> tuple[list[tuple[int, float, int]], int]:
+    """Choose M (index, depth, value) triples for one panel item.
 
-    Depths are spread uniformly in (0, 1) with a deterministic jitter so
-    values don't collide on the same line boundary. Value selection uses
-    a separate RNG stream so changing M doesn't shift earlier values."""
+    Indices are 1..M assigned in *depth order* — index 1 is the shallowest
+    needle, index M the deepest. Research §6: assigning indices in depth
+    order is what lets the comparator detect a contiguous tail-loss
+    pattern (truncation) vs a swiss-cheese loss pattern (KV-cache quant)
+    by inspecting which indices the model returned.
+
+    Depths are even-spaced anchors with small jitter, kept clear of the
+    very edges so the scatter doesn't degenerate into "all at the start"
+    or "all at the end" — that would defeat the purpose of testing
+    length-loss."""
     rng = random.Random((filler_seed << 16) ^ instance_seed)
-    # Even-spaced anchors with small jitter, kept clear of the very edges
-    # so the scatter doesn't degenerate into "all at the start" or "all
-    # at the end" — that would defeat the purpose of testing length-loss.
     anchors = [(i + 0.5) / m for i in range(m)]
     depths = [
         max(0.02, min(0.98, a + rng.uniform(-0.4 / m, 0.4 / m)))
         for a in anchors
     ]
     values = [rng.randint(_VALUE_LO, _VALUE_HI) for _ in range(m)]
-    pairs = list(zip(depths, values))
-    return pairs, sum(values)
+    # Indices in depth order: shallower depth -> smaller index.
+    indexed = sorted(zip(depths, values))
+    triples = [(i + 1, d, v) for i, (d, v) in enumerate(indexed)]
+    return triples, sum(values)
 
 
 def _build_panel(
@@ -140,20 +150,22 @@ def _build_panel(
 ) -> tuple[list[PromptItem], str]:
     """Build the aggregation panel and return (panel, panel_id).
 
-    Each panel item = one context length. The base filler is generated
-    once at the longest length and sliced; per-length value placement is
-    re-rolled with a per-length instance seed so different lengths don't
-    inherit each other's values verbatim (a model that memorized the L=8k
-    sum can't reuse it at L=16k)."""
+    Each panel item = one context length. Needles are indexed 1..M in
+    depth order, so missing indices reveal whether a model truncated
+    (contiguous tail loss) or KV-cache-degraded (scattered loss). The
+    base filler is generated once at the longest length and sliced;
+    per-length value placement is re-rolled with a per-length instance
+    seed so different lengths don't inherit each other's values verbatim
+    (a model that memorized the L=8k sum can't reuse it at L=16k)."""
     base_filler = generate_filler(max(lengths), seed=filler_seed)
 
     panel: list[PromptItem] = []
     for length in lengths:
-        pairs, expected_sum = _make_aggregation_setup(
+        triples, expected_sum = _make_aggregation_setup(
             length=length, m=m, filler_seed=filler_seed, instance_seed=length
         )
         haystack = base_filler[:length]
-        lines = [(f"# COUNT_VALUE = {v}", d) for (d, v) in pairs]
+        lines = [(f"# COUNT_VALUE_{i} = {v}", d) for (i, d, v) in triples]
         prompt_filler = insert_many_at_depths(haystack, lines)
         panel.append(PromptItem(
             name=f"L{length}_M{m}",
@@ -162,14 +174,16 @@ def _build_panel(
                 "length_chars": length,
                 "m": m,
                 "expected_sum": expected_sum,
-                # Stored so a comparator could in principle re-bucket by
-                # depth (e.g., "did the target miss only the back half?").
-                "values": [[d, v] for (d, v) in pairs],
+                "expected_count": m,
+                # Stored as (index, depth, value) so the comparator can
+                # detect contiguous-tail vs scattered loss patterns.
+                "needles": [[i, d, v] for (i, d, v) in triples],
             },
         ))
 
+    # Bumped v1 -> v2: panel content + prompt format both changed.
     panel_id = (
-        f"needle_aggregation_v1__"
+        f"needle_aggregation_v2__"
         f"L{format_panel_signature(list(lengths))}__"
         f"M{m}__"
         f"V{_VALUE_LO}-{_VALUE_HI}__"
@@ -179,26 +193,44 @@ def _build_panel(
     return panel, panel_id
 
 
-# Pull the longest digit run as the model's reported sum. We strip
-# thousands separators because polite formatting (e.g. `1,234`) is common.
-_INT_RE = re.compile(r"-?\d[\d,]*")
+# Two-line "count=<int>\nsum=<int>" parser. Tolerant of thousands
+# separators, surrounding whitespace, and reordering. If the model only
+# emitted one of the two values we still record what we got.
+_COUNT_RE = re.compile(r"\bcount\s*[=:]\s*(-?\d[\d,]*)", re.IGNORECASE)
+_SUM_RE = re.compile(r"\bsum\s*[=:]\s*(-?\d[\d,]*)", re.IGNORECASE)
+# Fallback for models that ignore the format and reply with just the sum.
+_BARE_INT_RE = re.compile(r"-?\d[\d,]*")
 
 
-def _parse_sum(content: str) -> int | None:
-    """Best-effort integer extraction. Same trick as the arithmetic test:
-    longest digit run wins, separators stripped. Tolerant of "the sum is
-    347." style replies even though the prompt asks for a bare integer."""
-    if not content:
+def _parse_int(raw: str | None) -> int | None:
+    if not raw:
         return None
-    matches = _INT_RE.findall(content)
-    if not matches:
-        return None
-    matches.sort(key=lambda s: len(s.replace(",", "").lstrip("-")), reverse=True)
-    raw = matches[0].replace(",", "")
     try:
-        return int(raw)
+        return int(raw.replace(",", ""))
     except ValueError:
         return None
+
+
+def _parse_count_and_sum(content: str) -> tuple[int | None, int | None]:
+    """Extract (count, sum) from a free-form completion.
+
+    Looks for `count=<int>` and `sum=<int>` first (the requested format).
+    If `sum=` is missing but the response is just a bare integer, treat
+    that as the sum and leave count None — a polite-but-noncompliant
+    model still gives us the sum signal."""
+    if not content:
+        return None, None
+    count_match = _COUNT_RE.search(content)
+    sum_match = _SUM_RE.search(content)
+    count = _parse_int(count_match.group(1)) if count_match else None
+    summed = _parse_int(sum_match.group(1)) if sum_match else None
+    if summed is None:
+        # Fallback: the only number in a "347" or "the sum is 347" reply.
+        bare = _BARE_INT_RE.findall(content)
+        if bare:
+            bare.sort(key=lambda s: len(s.replace(",", "").lstrip("-")), reverse=True)
+            summed = _parse_int(bare[0])
+    return count, summed
 
 
 def run_needle_aggregation(
@@ -209,11 +241,14 @@ def run_needle_aggregation(
     filler_seed: int = DEFAULT_FILLER_SEED,
     n_samples: int = DEFAULT_N_SAMPLES,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    schedule_seed: int = DEFAULT_SCHEDULE_SEED,
+    schedule_seed: int | None = DEFAULT_SCHEDULE_SEED,
     sleep_range: tuple[float, float] = DEFAULT_SLEEP_RANGE,
     progress: bool = True,
 ) -> tuple[RunResult, list[dict]]:
     """Run the aggregation panel once against `endpoint`."""
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
     panel, panel_id = _build_panel(
         lengths=lengths, m=m, filler_seed=filler_seed
     )
@@ -250,8 +285,9 @@ def run_needle_aggregation(
                 continue
 
             outcomes[call.prompt_idx].completions.append(resp.content)
-            parsed = _parse_sum(resp.content)
-            expected = int(item.meta["expected_sum"])
+            parsed_count, parsed_sum = _parse_count_and_sum(resp.content)
+            expected_sum = int(item.meta["expected_sum"])
+            expected_count = int(item.meta["expected_count"])
             raw_rows.append({
                 "i": i,
                 "prompt_idx": call.prompt_idx,
@@ -260,15 +296,19 @@ def run_needle_aggregation(
                 "completion_tokens": resp.completion_tokens,
                 "latency_s": round(resp.latency_s, 4),
                 "content": resp.content[:200],
-                "parsed_sum": parsed,
-                "expected_sum": expected,
-                "match": parsed == expected,
+                "parsed_count": parsed_count,
+                "parsed_sum": parsed_sum,
+                "expected_count": expected_count,
+                "expected_sum": expected_sum,
+                "count_match": parsed_count == expected_count,
+                "sum_match": parsed_sum == expected_sum,
             })
             if progress:
                 print(
                     f"[{i}/{total}] {item.name:<14} "
-                    f"got={parsed} exp={expected} "
-                    f"{'OK' if parsed == expected else 'MISS'}",
+                    f"count={parsed_count}/{expected_count} "
+                    f"sum={parsed_sum}/{expected_sum} "
+                    f"{'OK' if parsed_sum == expected_sum else 'MISS'}",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -307,13 +347,17 @@ class AggregationCellComparison:
     name: str
     length_chars: int
     expected_sum: int
-    # We summarize each side via its sample mean — the modal would discard
-    # information when the sums differ slightly across samples (likely with
-    # n_samples > 1). For exact comparisons, n=1 makes mean = single value.
-    reference_mean_parsed: float | None
-    target_mean_parsed: float | None
-    reference_mean_relative_error: float | None
-    target_mean_relative_error: float | None
+    expected_count: int
+    # Both sides' sample-mean parsed sum and count. Mean (rather than
+    # mode) preserves information when sums vary across samples.
+    reference_mean_sum: float | None
+    target_mean_sum: float | None
+    reference_mean_count: float | None
+    target_mean_count: float | None
+    reference_sum_relative_error: float | None
+    target_sum_relative_error: float | None
+    reference_count_relative_error: float | None
+    target_count_relative_error: float | None
 
 
 @dataclass
@@ -324,27 +368,36 @@ class AggregationReport:
     panel_size: int
     usable_cells: int
     n_samples: int
-    reference_mean_relative_error: float
-    target_mean_relative_error: float
-    relative_error_gap_target_minus_ref: float
-    # Length-axis curve of mean relative error. Plot this against length:
-    # a sharp upward elbow at one length is the truncation signature.
-    reference_length_relative_error: dict[int, float]
-    target_length_relative_error: dict[int, float]
+    # Sum-axis aggregate. The headline number — a >10% sum undercount
+    # that's larger on the target than the reference is the primary fail
+    # signal, regardless of which mechanism caused it.
+    reference_mean_sum_relative_error: float
+    target_mean_sum_relative_error: float
+    sum_error_gap_target_minus_ref: float
+    # Count-axis aggregate. Research §6 disambiguation: count error
+    # primarily indicates recall/truncation (the model didn't see the
+    # needles); sum error with right count indicates arithmetic drift.
+    reference_mean_count_relative_error: float
+    target_mean_count_relative_error: float
+    count_error_gap_target_minus_ref: float
+    # Length-axis curve of mean sum relative error. Plot this against
+    # length: a sharp upward elbow at one length is the truncation
+    # signature.
+    reference_length_sum_error: dict[int, float]
+    target_length_sum_error: dict[int, float]
+    # Each side's diagnosis: "truncation" if count error is the dominant
+    # mode, "arithmetic_or_kv_quant" if count is right but sum is wrong,
+    # "ok" if both are within threshold. Aggregated across cells.
+    reference_diagnosis: str
+    target_diagnosis: str
     fail_threshold_relative_error_gt: float
     fail: bool
     per_cell: list[AggregationCellComparison]
 
 
-def _mean_parsed(completions: list[str]) -> tuple[float | None, int]:
-    """Mean of parsed integer sums across completions. None if zero
-    parseable replies; in that case we report None rather than 0 so the
-    operator can distinguish "all wrong" from "no parseable output."
-    Returns (mean_or_None, n_parsed)."""
-    if not completions:
-        return None, 0
-    parsed = [_parse_sum(c) for c in completions]
-    valid = [p for p in parsed if p is not None]
+def _mean_of(values: list[int | None]) -> tuple[float | None, int]:
+    """Mean of valid (non-None) values; returns (mean_or_None, n_valid)."""
+    valid = [v for v in values if v is not None]
     if not valid:
         return None, 0
     return sum(valid) / len(valid), len(valid)
@@ -357,19 +410,45 @@ def _relative_error(parsed_mean: float | None, expected: int) -> float | None:
     return abs(parsed_mean - expected) / expected
 
 
+def _diagnose(
+    sum_err: float, count_err: float, threshold: float = FAIL_RELATIVE_ERROR_GT
+) -> str:
+    """Map (sum_err, count_err) to a coarse cause-of-error label.
+
+    Research §6: "If count is wrong, it's a recall/truncation issue. If
+    count is right but sum is wrong, it's an arithmetic issue." We add a
+    third bucket when both look fine."""
+    if sum_err <= threshold and count_err <= threshold:
+        return "ok"
+    if count_err > threshold:
+        return "truncation_or_recall_loss"
+    return "arithmetic_or_kv_quant"
+
+
 def compare_needle_aggregation(
     reference: RunResult, target: RunResult
 ) -> AggregationReport:
+    """Compare two aggregation runs using both count and sum.
+
+    Research §6 critical disambiguation: ask for both `count` and `sum`,
+    so we can tell:
+      - count off  -> truncation / recall loss (the model didn't see the
+                       needles)
+      - sum off, count right -> arithmetic drift (KV-cache quant or
+                                  weight quant in the addition path)
+    """
     assert_comparable(reference, target, expected_test=TEST_NAME)
 
     by_idx_ref = {p.prompt_idx: p for p in reference.prompts}
     by_idx_tgt = {p.prompt_idx: p for p in target.prompts}
 
     per_cell: list[AggregationCellComparison] = []
+    ref_sum_err_total = 0.0
+    tgt_sum_err_total = 0.0
+    ref_count_err_total = 0.0
+    tgt_count_err_total = 0.0
     ref_len_buckets: dict[int, list[float]] = {}
     tgt_len_buckets: dict[int, list[float]] = {}
-    ref_total = 0.0
-    tgt_total = 0.0
     usable = 0
 
     for idx in sorted(by_idx_ref):
@@ -379,30 +458,50 @@ def compare_needle_aggregation(
             continue
         meta = rp.meta or {}
         length = int(meta.get("length_chars", 0))
-        expected = int(meta.get("expected_sum", 0))
+        expected_sum = int(meta.get("expected_sum", 0))
+        expected_count = int(meta.get("expected_count", 0))
 
-        r_mean, r_n = _mean_parsed(rp.completions)
-        t_mean, t_n = _mean_parsed(tp.completions)
-        r_err = _relative_error(r_mean, expected)
-        t_err = _relative_error(t_mean, expected)
+        r_sums = [_parse_count_and_sum(c)[1] for c in rp.completions]
+        t_sums = [_parse_count_and_sum(c)[1] for c in tp.completions]
+        r_counts = [_parse_count_and_sum(c)[0] for c in rp.completions]
+        t_counts = [_parse_count_and_sum(c)[0] for c in tp.completions]
+
+        r_sum_mean, _ = _mean_of(r_sums)
+        t_sum_mean, _ = _mean_of(t_sums)
+        r_count_mean, _ = _mean_of(r_counts)
+        t_count_mean, _ = _mean_of(t_counts)
+
+        r_sum_err = _relative_error(r_sum_mean, expected_sum)
+        t_sum_err = _relative_error(t_sum_mean, expected_sum)
+        r_count_err = _relative_error(r_count_mean, expected_count)
+        t_count_err = _relative_error(t_count_mean, expected_count)
 
         per_cell.append(AggregationCellComparison(
             prompt_idx=idx,
             name=rp.name,
             length_chars=length,
-            expected_sum=expected,
-            reference_mean_parsed=None if r_mean is None else round(r_mean, 4),
-            target_mean_parsed=None if t_mean is None else round(t_mean, 4),
-            reference_mean_relative_error=None if r_err is None else round(r_err, 4),
-            target_mean_relative_error=None if t_err is None else round(t_err, 4),
+            expected_sum=expected_sum,
+            expected_count=expected_count,
+            reference_mean_sum=None if r_sum_mean is None else round(r_sum_mean, 4),
+            target_mean_sum=None if t_sum_mean is None else round(t_sum_mean, 4),
+            reference_mean_count=None if r_count_mean is None else round(r_count_mean, 4),
+            target_mean_count=None if t_count_mean is None else round(t_count_mean, 4),
+            reference_sum_relative_error=None if r_sum_err is None else round(r_sum_err, 4),
+            target_sum_relative_error=None if t_sum_err is None else round(t_sum_err, 4),
+            reference_count_relative_error=None if r_count_err is None else round(r_count_err, 4),
+            target_count_relative_error=None if t_count_err is None else round(t_count_err, 4),
         ))
 
-        if r_err is not None and t_err is not None:
+        if r_sum_err is not None and t_sum_err is not None:
             usable += 1
-            ref_total += r_err
-            tgt_total += t_err
-            ref_len_buckets.setdefault(length, []).append(r_err)
-            tgt_len_buckets.setdefault(length, []).append(t_err)
+            ref_sum_err_total += r_sum_err
+            tgt_sum_err_total += t_sum_err
+            # Treat missing count as "didn't comply" rather than "0% error":
+            # default to 1.0 (100% relative error) so it's flagged.
+            ref_count_err_total += r_count_err if r_count_err is not None else 1.0
+            tgt_count_err_total += t_count_err if t_count_err is not None else 1.0
+            ref_len_buckets.setdefault(length, []).append(r_sum_err)
+            tgt_len_buckets.setdefault(length, []).append(t_sum_err)
 
     if usable == 0:
         return AggregationReport(
@@ -412,18 +511,25 @@ def compare_needle_aggregation(
             panel_size=reference.panel_size,
             usable_cells=0,
             n_samples=reference.n_samples,
-            reference_mean_relative_error=0.0,
-            target_mean_relative_error=0.0,
-            relative_error_gap_target_minus_ref=0.0,
-            reference_length_relative_error={},
-            target_length_relative_error={},
+            reference_mean_sum_relative_error=0.0,
+            target_mean_sum_relative_error=0.0,
+            sum_error_gap_target_minus_ref=0.0,
+            reference_mean_count_relative_error=0.0,
+            target_mean_count_relative_error=0.0,
+            count_error_gap_target_minus_ref=0.0,
+            reference_length_sum_error={},
+            target_length_sum_error={},
+            reference_diagnosis="no_data",
+            target_diagnosis="no_data",
             fail_threshold_relative_error_gt=FAIL_RELATIVE_ERROR_GT,
             fail=False,
             per_cell=per_cell,
         )
 
-    ref_err = ref_total / usable
-    tgt_err = tgt_total / usable
+    ref_sum_err = ref_sum_err_total / usable
+    tgt_sum_err = tgt_sum_err_total / usable
+    ref_count_err = ref_count_err_total / usable
+    tgt_count_err = tgt_count_err_total / usable
 
     def _bucket_mean(b: dict[int, list[float]]) -> dict[int, float]:
         return {k: round(sum(v) / len(v), 4) for k, v in b.items() if v}
@@ -435,17 +541,22 @@ def compare_needle_aggregation(
         panel_size=reference.panel_size,
         usable_cells=usable,
         n_samples=reference.n_samples,
-        reference_mean_relative_error=round(ref_err, 4),
-        target_mean_relative_error=round(tgt_err, 4),
-        relative_error_gap_target_minus_ref=round(tgt_err - ref_err, 4),
-        reference_length_relative_error=_bucket_mean(ref_len_buckets),
-        target_length_relative_error=_bucket_mean(tgt_len_buckets),
+        reference_mean_sum_relative_error=round(ref_sum_err, 4),
+        target_mean_sum_relative_error=round(tgt_sum_err, 4),
+        sum_error_gap_target_minus_ref=round(tgt_sum_err - ref_sum_err, 4),
+        reference_mean_count_relative_error=round(ref_count_err, 4),
+        target_mean_count_relative_error=round(tgt_count_err, 4),
+        count_error_gap_target_minus_ref=round(tgt_count_err - ref_count_err, 4),
+        reference_length_sum_error=_bucket_mean(ref_len_buckets),
+        target_length_sum_error=_bucket_mean(tgt_len_buckets),
+        reference_diagnosis=_diagnose(ref_sum_err, ref_count_err),
+        target_diagnosis=_diagnose(tgt_sum_err, tgt_count_err),
         fail_threshold_relative_error_gt=FAIL_RELATIVE_ERROR_GT,
-        # Fail when the target's mean relative error itself exceeds the
-        # threshold AND the gap to reference is meaningful. This avoids a
-        # false fail when both endpoints are slightly off in the same way
-        # (which would be a model property, not a fidelity gap).
-        fail=(tgt_err > FAIL_RELATIVE_ERROR_GT) and (tgt_err - ref_err > FAIL_RELATIVE_ERROR_GT / 2),
+        # Fail when target sum-error itself crosses the threshold AND the
+        # gap to reference is meaningful (avoids false-fails when both
+        # endpoints are equally bad — a model property, not a fidelity gap).
+        fail=(tgt_sum_err > FAIL_RELATIVE_ERROR_GT)
+            and (tgt_sum_err - ref_sum_err > FAIL_RELATIVE_ERROR_GT / 2),
         per_cell=per_cell,
     )
 
@@ -473,7 +584,8 @@ def main() -> int:
                              f"(default {DEFAULT_M})")
     parser.add_argument("--filler-seed", type=int, default=DEFAULT_FILLER_SEED)
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
-    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SCHEDULE_SEED,
+                        help="Schedule shuffle seed (default: random per run)")
     parser.add_argument("--sleep-min", type=float, default=DEFAULT_SLEEP_RANGE[0])
     parser.add_argument("--sleep-max", type=float, default=DEFAULT_SLEEP_RANGE[1])
     args = parser.parse_args()

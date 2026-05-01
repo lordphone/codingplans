@@ -60,6 +60,7 @@ __all__ = [
     "insert_at_depth",
     "insert_many_at_depths",
     "build_single_needle_messages",
+    "build_single_needle_paraphrased_messages",
     "build_multi_needle_messages",
     "build_aggregation_messages",
     "make_length_depth_grid",
@@ -278,6 +279,23 @@ _SINGLE_NEEDLE_INSTRUCTION = (
     "trailing punctuation."
 )
 
+# Paraphrased single-needle instruction. Research §4: "RULER's variant:
+# needle says 'The special magic number is X'; query says 'What is the
+# magic number?'" The query and the needle key use *different* terminology
+# so the model cannot win via lexical-substring attention; it must
+# actually attend to the surrounding sentence. Distractors with the same
+# token shape are inserted alongside the real needle, and the query asks
+# explicitly for the *current* operational token, not the legacy/staging
+# variants.
+_SINGLE_NEEDLE_PARAPHRASED_INSTRUCTION = (
+    "Below is a Python source file. Several comment lines declare related "
+    "tokens, but only one is the *current operational* secret. Find the "
+    "comment line of the form `# OPERATIONAL_TOKEN_CURRENT = <value>` "
+    "(NOT `_LEGACY`, `_RETIRED`, `_STAGING`, or any other suffix) and "
+    "reply with ONLY its value — no quotes, no prose, no trailing "
+    "punctuation, no other tokens."
+)
+
 _MULTI_NEEDLE_INSTRUCTION_TMPL = (
     "Below is a Python source file. Somewhere inside it there are exactly "
     "{k} comment lines of the form `# UNLOCK_CODE_<i> = <value>` where "
@@ -288,16 +306,30 @@ _MULTI_NEEDLE_INSTRUCTION_TMPL = (
 
 _AGGREGATION_INSTRUCTION_TMPL = (
     "Below is a Python source file. Scattered throughout it there are "
-    "exactly {m} comment lines of the form `# COUNT_VALUE = <integer>`. "
-    "Each integer is positive. Read carefully and reply with ONLY the "
-    "SUM of those integers as a single decimal integer — no commas, no "
-    "prose, no trailing punctuation."
+    "comment lines of the form `# COUNT_VALUE_<i> = <integer>` where "
+    "`<i>` is a positive index (1, 2, 3, ...) and `<integer>` is a "
+    "positive integer. Read carefully and reply with EXACTLY two lines, "
+    "in this exact format:\n\n"
+    "count=<number of such comment lines you found>\n"
+    "sum=<sum of all the integers>\n\n"
+    "No prose, no commas, no thousands separators, no other lines. The "
+    "expected count is {m} but report what you actually find."
 )
 
 
 def build_single_needle_messages(filler: str) -> tuple[dict[str, str], ...]:
     user = (
         f"{_SINGLE_NEEDLE_INSTRUCTION}\n\n```python\n{filler}\n```"
+    )
+    return ({"role": "user", "content": user},)
+
+
+def build_single_needle_paraphrased_messages(filler: str) -> tuple[dict[str, str], ...]:
+    """Paraphrased-query variant: instruction terminology differs from the
+    needle key, and the model must distinguish the current value from
+    distractors with similar names. Defeats lexical-substring shortcuts."""
+    user = (
+        f"{_SINGLE_NEEDLE_PARAPHRASED_INSTRUCTION}\n\n```python\n{filler}\n```"
     )
     return ({"role": "user", "content": user},)
 
