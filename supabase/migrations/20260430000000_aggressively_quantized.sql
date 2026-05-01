@@ -3,4 +3,4 @@
 -- Existing data is seed/fake — drop the column outright.
 
 alter table public.benchmark_runs drop column if exists quantization;
-alter table public.benchmark_runs add column aggressively_quantized boolean null;
+alter table public.benchmark_runs add column if not exists aggressively_quantized boolean null;
