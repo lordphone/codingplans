@@ -30,9 +30,9 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent  # benchmarks/fidelity/
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "weights"))
+sys.path.insert(0, str(_HERE / "long_context"))
 # Future families:
 # sys.path.insert(0, str(_HERE / "identity"))
-# sys.path.insert(0, str(_HERE / "long_context"))
 
 from common import read_run_result  # noqa: E402
 
@@ -41,10 +41,27 @@ from test_arithmetic import TEST_NAME as ARITHMETIC, compare_arithmetic  # noqa:
 from test_entropy import TEST_NAME as ENTROPY, compare_entropy  # noqa: E402
 from test_rollout_prefix import TEST_NAME as ROLLOUT, compare_rollout_prefix  # noqa: E402
 
+# long_context/
+from test_needle_single import (  # noqa: E402
+    TEST_NAME as NEEDLE_SINGLE,
+    compare_single_needle,
+)
+from test_needle_multi import (  # noqa: E402
+    TEST_NAME as NEEDLE_MULTI,
+    compare_needle_multi,
+)
+from test_needle_aggregation import (  # noqa: E402
+    TEST_NAME as NEEDLE_AGGREGATION,
+    compare_needle_aggregation,
+)
+
 _DISPATCH = {
     ARITHMETIC: compare_arithmetic,
     ENTROPY: compare_entropy,
     ROLLOUT: compare_rollout_prefix,
+    NEEDLE_SINGLE: compare_single_needle,
+    NEEDLE_MULTI: compare_needle_multi,
+    NEEDLE_AGGREGATION: compare_needle_aggregation,
 }
 
 
