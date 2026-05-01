@@ -101,7 +101,6 @@
                   <thead>
                     <tr class="border-b border-zinc-200 bg-zinc-50/80">
                       <th class="border-r border-zinc-200 px-4 py-3 text-xs font-medium text-zinc-500">Run (UTC)</th>
-                      <th class="border-r border-zinc-200 px-4 py-3 text-xs font-medium text-zinc-500">Result</th>
                       <th class="px-4 py-3 text-xs font-medium text-zinc-500">Status</th>
                     </tr>
                   </thead>
@@ -111,31 +110,21 @@
                         <td class="border-r border-zinc-200 px-4 py-3 font-mono text-xs text-zinc-600">
                           {{ row.dayLabel }} · {{ row.timeLabel }}
                         </td>
-                        <td class="border-r border-zinc-200 px-4 py-3 align-top">
-                          <div class="flex flex-col gap-1">
-                            <div class="flex items-start gap-2">
-                              <span
-                                class="min-w-0 flex-1 text-xs font-medium uppercase leading-snug"
-                                [class.text-emerald-700]="row.status === 'verified'"
-                                [class.text-red-800]="row.status === 'scam'"
-                                >{{ row.label }}</span>
-                              <span
-                                class="mt-1 h-2.5 w-2.5 shrink-0 rounded-[1px]"
-                                [class.bg-emerald-600]="row.status === 'verified'"
-                                [class.bg-red-700]="row.status === 'scam'"
-                              ></span>
-                            </div>
-                            @if (showsQuantizationLossNotice(row.label, row.status)) {
-                              <span class="text-[10px] font-medium uppercase tracking-wide text-red-800">Loss detected</span>
-                            }
+                        <td class="px-4 py-3">
+                          <div class="flex items-center gap-2">
+                            <span
+                              class="h-2.5 w-2.5 shrink-0 rounded-[1px]"
+                              [class.bg-emerald-600]="row.status === 'standard'"
+                              [class.bg-red-700]="row.status === 'aggressive'"
+                            ></span>
+                            <span
+                              class="text-xs font-medium uppercase"
+                              [class.text-emerald-700]="row.status === 'standard'"
+                              [class.text-red-800]="row.status === 'aggressive'"
+                            >
+                              @if (row.status === 'standard') { Standard } @else { Aggressive }
+                            </span>
                           </div>
-                        </td>
-                        <td class="px-4 py-3 text-xs font-medium text-zinc-600">
-                          @if (row.status === 'verified') {
-                            Verified
-                          } @else {
-                            Flagged
-                          }
                         </td>
                       </tr>
                     }

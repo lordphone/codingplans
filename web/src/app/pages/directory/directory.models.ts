@@ -1,5 +1,5 @@
-/** `untested`: no `benchmark_runs.quantization` on file for this plan+model yet. */
-export type QuantizationStatus = 'scam' | 'verified' | 'untested';
+/** `untested`: no `benchmark_runs.aggressively_quantized` value on file for this plan+model yet. */
+export type QuantizationStatus = 'aggressive' | 'standard' | 'untested';
 
 /** One grid row: one model on a plan. */
 export interface DirectoryModelRow {
@@ -13,7 +13,6 @@ export interface DirectoryModelRow {
   usageLabel: string;
   tps: number;
   ttftS: number | null;
-  quantization: string;
   quantizationStatus: QuantizationStatus;
 }
 

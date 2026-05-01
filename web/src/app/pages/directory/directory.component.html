@@ -118,27 +118,23 @@
                       </a>
                     </td>
                     <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">
-                      <div class="flex min-h-[2.75rem] flex-col justify-center gap-1">
-                        <div class="flex items-start gap-2">
+                      <div class="flex min-h-[2.75rem] flex-col justify-center">
+                        <div class="flex items-center gap-2">
                           <span
                             class="min-w-0 flex-1 font-mono text-[11px] leading-snug uppercase"
                             [class.text-zinc-500]="modelRow.quantizationStatus === 'untested'"
-                            [class.text-tertiary]="modelRow.quantizationStatus === 'scam'"
-                            [class.text-secondary]="modelRow.quantizationStatus === 'verified'"
-                            >{{ modelRow.quantization }}</span>
+                            [class.text-tertiary]="modelRow.quantizationStatus === 'aggressive'"
+                            [class.text-secondary]="modelRow.quantizationStatus === 'standard'"
+                            >{{ quantizationLabel(modelRow.quantizationStatus) }}</span>
                           <div
-                            class="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-[1px]"
+                            class="h-2.5 w-2.5 shrink-0 rounded-[1px]"
                             [ngClass]="{
                               'bg-zinc-300 border border-zinc-400': modelRow.quantizationStatus === 'untested',
-                              'bg-tertiary': modelRow.quantizationStatus === 'scam',
-                              'bg-secondary': modelRow.quantizationStatus === 'verified'
+                              'bg-tertiary': modelRow.quantizationStatus === 'aggressive',
+                              'bg-secondary': modelRow.quantizationStatus === 'standard'
                             }"
                           ></div>
                         </div>
-                        @if (showsQuantizationLossNotice(modelRow)) {
-                          <span class="font-mono text-[9px] uppercase leading-tight tracking-wide text-tertiary"
-                            >Loss Detected</span>
-                        }
                       </div>
                     </td>
                     <td class="border-r border-zinc-200 px-4 py-3.5 align-middle">

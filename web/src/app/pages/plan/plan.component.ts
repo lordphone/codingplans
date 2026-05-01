@@ -624,11 +624,4 @@ export class PlanComponent {
     return `${seconds.toFixed(2)} s`;
   }
 
-  showsQuantizationLossNotice(label: string, status: 'scam' | 'verified'): boolean {
-    if (status !== 'scam') {
-      return false;
-    }
-    const q = label.toLowerCase();
-    return q.includes('scam') || /\breset\b/.test(q);
-  }
 }

@@ -23,8 +23,7 @@ function row(overrides: Partial<DirectoryModelRow> = {}): DirectoryModelRow {
     usageLabel: '—',
     tps: 50,
     ttftS: 0.2,
-    quantization: 'fp16',
-    quantizationStatus: 'verified',
+    quantizationStatus: 'standard',
     ...overrides
   };
 }
@@ -72,8 +71,7 @@ describe('DirectoryComponent', () => {
                 usageLabel: '—',
                 tps: 120,
                 ttftS: 0.35,
-                quantization: 'fp16',
-                quantizationStatus: 'verified'
+                quantizationStatus: 'standard'
               }
             ]
           }
@@ -316,7 +314,7 @@ describe('DirectoryComponent', () => {
       component.searchQuery.set('acme-ai');
       expect(component.view().rowCount).toBe(1);
 
-      component.searchQuery.set('fp16');
+      component.searchQuery.set('standard');
       expect(component.view().rowCount).toBe(1);
 
       component.searchQuery.set('zzz');

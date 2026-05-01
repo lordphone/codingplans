@@ -39,6 +39,7 @@ export interface PlanModel {
 /**
  * One benchmark run for a plan + model (wide metrics, Option B).
  * Nullable metric columns = not measured on this run.
+ * `aggressively_quantized` is boolean: true = sub-8-bit quant detected, false = standard (>=8-bit), null = untested.
  */
 export interface BenchmarkRun {
   id: string;
@@ -47,7 +48,7 @@ export interface BenchmarkRun {
   run_at: string;
   tps: number | null;
   ttft_s: number | null;
-  quantization: string | null;
+  aggressively_quantized: boolean | null;
 }
 
 // --- Nested `.select()` result shapes (PostgREST embeds) ---
@@ -73,8 +74,7 @@ export interface DisplayPlan {
   models: string;
   tps: number;
   tpsPercent: number;
-  quantization: string;
-  quantizationStatus: 'scam' | 'verified';
+  quantizationStatus: 'aggressive' | 'standard';
   price: string;
   period: string;
 }

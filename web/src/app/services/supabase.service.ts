@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../environments/environment';
-import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider } from '../pages/directory/directory.models';
+import type { DirectoryModelRow, DirectoryPlan, DirectoryProvider, QuantizationStatus } from '../pages/directory/directory.models';
 import type {
   PlanPerformanceDayPoint,
   PlanPerformanceModelBlock,
@@ -72,8 +72,8 @@ export class SupabaseService {
   /**
    * Directory listing: nested providers → plans → plan_models → models; TPS/TTFT use **{@link DIRECTORY_ROLLING_WINDOW_DAYS}-day**
    * rolling averages (UTC) on the directory. Provider overview TPS/TTFT use **{@link BENCHMARK_WINDOW_DAYS}-day** averages.
-   * Plan detail charts load **{@link PLAN_PAGE_CHART_FETCH_DAYS}-day** daily buckets (UI can focus shorter windows). **Quantization** from the **latest** run (any time) with non-null
-   * `quantization` for that plan+model. Also returns a map of prebuilt {@link PlanPerformancePage} entries so
+   * Plan detail charts load **{@link PLAN_PAGE_CHART_FETCH_DAYS}-day** daily buckets (UI can focus shorter windows). **Quantization status** from the **latest** run (any time) with non-null
+   * `aggressively_quantized` for that plan+model. Also returns a map of prebuilt {@link PlanPerformancePage} entries so
    * plan routes can skip refetching after an in-app visit to the directory.
    * **Usage limits** column shows '—' until we surface `plan_models.usage_limit` again.
    */
@@ -92,15 +92,15 @@ export class SupabaseService {
       ...new Set(providers.flatMap(p => (p.plans ?? []).filter(pl => pl.is_active).map(pl => pl.id)))
     ];
 
-    const { statsByPlanModel, statsByPlanModelDirectory, latestQuantByPlanModel, runsByPlanId, quantRowsDesc } =
+    const { statsByPlanModel, statsByPlanModelDirectory, latestAggressiveByPlanModel, runsByPlanId, quantRowsDesc } =
       await this.loadBenchmarkAggregatesForPlanIds(planIds);
 
-    const directoryProviders = mapProvidersToDirectory(providers, statsByPlanModelDirectory, latestQuantByPlanModel);
+    const directoryProviders = mapProvidersToDirectory(providers, statsByPlanModelDirectory, latestAggressiveByPlanModel);
     const planPagesByKey = buildPlanPagesBySlugKey(providers, runsByPlanId);
     const providerPagesBySlug = buildProviderPagesBySlug(
       providers,
       statsByPlanModelDirectory,
-      latestQuantByPlanModel,
+      latestAggressiveByPlanModel,
       runsByPlanId,
       quantRowsDesc
     );
@@ -148,7 +148,7 @@ export class SupabaseService {
     const sinceIso = rollingWindowStartUtcIso(PLAN_PAGE_CHART_FETCH_DAYS);
     const { data: runRows, error: runsError } = await this.supabase
       .from('benchmark_runs')
-      .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
+      .select('plan_id, model_id, tps, ttft_s, aggressively_quantized, run_at')
       .eq('plan_id', planRow.id)
       .gte('run_at', sinceIso)
       .order('run_at', { ascending: true });
@@ -164,14 +164,14 @@ export class SupabaseService {
   private async loadBenchmarkAggregatesForPlanIds(planIds: string[]): Promise<{
     statsByPlanModel: Map<string, PlanModelBenchmarkStats>;
     statsByPlanModelDirectory: Map<string, PlanModelBenchmarkStats>;
-    latestQuantByPlanModel: Map<string, string>;
+    latestAggressiveByPlanModel: Map<string, boolean>;
     latestRunAtIso: string | null;
     runsByPlanId: Map<string, BenchmarkRun[]>;
     quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>>;
   }> {
     const statsByPlanModel = new Map<string, PlanModelBenchmarkStats>();
     const statsByPlanModelDirectory = new Map<string, PlanModelBenchmarkStats>();
-    const latestQuantByPlanModel = new Map<string, string>();
+    const latestAggressiveByPlanModel = new Map<string, boolean>();
     let latestRunAtIso: string | null = null;
     const runsByPlanId = new Map<string, BenchmarkRun[]>();
     const quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>> = [];
@@ -180,7 +180,7 @@ export class SupabaseService {
       return {
         statsByPlanModel,
         statsByPlanModelDirectory,
-        latestQuantByPlanModel,
+        latestAggressiveByPlanModel,
         latestRunAtIso,
         runsByPlanId,
         quantRowsDesc
@@ -192,15 +192,15 @@ export class SupabaseService {
     const [runsRes, quantRes, latestRes] = await Promise.all([
       this.supabase
         .from('benchmark_runs')
-        .select('plan_id, model_id, tps, ttft_s, quantization, run_at')
+        .select('plan_id, model_id, tps, ttft_s, aggressively_quantized, run_at')
         .in('plan_id', planIds)
         .gte('run_at', sinceIso)
         .order('run_at', { ascending: true }),
       this.supabase
         .from('benchmark_runs')
-        .select('plan_id, model_id, quantization, run_at')
+        .select('plan_id, model_id, aggressively_quantized, run_at')
         .in('plan_id', planIds)
-        .not('quantization', 'is', null)
+        .not('aggressively_quantized', 'is', null)
         .order('run_at', { ascending: false }),
       this.supabase
         .from('benchmark_runs')
@@ -228,8 +228,10 @@ export class SupabaseService {
     const sinceDirectoryIso = rollingWindowStartUtcIso(DIRECTORY_ROLLING_WINDOW_DAYS);
     const directoryRuns = windowRuns.filter(r => r.run_at >= sinceDirectoryIso);
     buildRollingWindowStatsIntoMap(directoryRuns, statsByPlanModelDirectory);
-    const quantData = (quantRes.data ?? []) as Array<Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'quantization' | 'run_at'>>;
-    buildLatestQuantizationMap(quantData, latestQuantByPlanModel);
+    const quantData = (quantRes.data ?? []) as Array<
+      Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'aggressively_quantized' | 'run_at'>
+    >;
+    buildLatestAggressiveMap(quantData, latestAggressiveByPlanModel);
     latestRunAtIso = latestRes.data?.run_at ?? null;
     partitionRunsByPlanId(windowRuns, runsByPlanId);
     for (const r of quantData) {
@@ -239,7 +241,7 @@ export class SupabaseService {
     return {
       statsByPlanModel,
       statsByPlanModelDirectory,
-      latestQuantByPlanModel,
+      latestAggressiveByPlanModel,
       latestRunAtIso,
       runsByPlanId,
       quantRowsDesc
@@ -272,7 +274,7 @@ interface PlanWithModelsEmbed {
   plan_models: PlanModelJunction[] | null;
 }
 
-/** Rolling-window averages for one (plan_id, model_id); quantization is loaded separately. */
+/** Rolling-window averages for one (plan_id, model_id); aggressively_quantized is loaded separately. */
 interface PlanModelBenchmarkStats {
   avgTps: number | null;
   avgTtftS: number | null;
@@ -341,7 +343,7 @@ function laterIso(a: string | null, b: string | null): string | null {
 function buildProviderPagesBySlug(
   providers: ProviderWithPlansAndModels[],
   statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
-  latestQuantByPlanModel: Map<string, string>,
+  latestAggressiveByPlanModel: Map<string, boolean>,
   runsByPlanId: Map<string, BenchmarkRun[]>,
   quantRowsDesc: Array<Pick<BenchmarkRun, 'plan_id' | 'run_at'>>
 ): Map<string, ProviderPageData> {
@@ -353,7 +355,7 @@ function buildProviderPagesBySlug(
     const fromWindow = maxRunAtIsoForPlanIds(runsByPlanId, planIds);
     const fromQuant = maxRunAtFromQuantRowsForPlans(quantRowsDesc, planIdSet);
     const latestRunAtIso = laterIso(fromWindow, fromQuant);
-    const plans = mapPlansForProviderPage(p, statsByPlanModel, latestQuantByPlanModel);
+    const plans = mapPlansForProviderPage(p, statsByPlanModel, latestAggressiveByPlanModel);
     out.set(p.slug, {
       providerName: p.name,
       lastUpdated: formatLastUpdatedUtc(latestRunAtIso, p.created_at),
@@ -452,19 +454,18 @@ function buildRollingWindowStatsIntoMap(rows: BenchmarkRun[], target: Map<string
   }
 }
 
-/** Latest non-empty `quantization` per (plan_id, model_id); `rows` should be ordered by `run_at` descending. */
-function buildLatestQuantizationMap(
-  rows: Array<Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'quantization' | 'run_at'>>,
-  target: Map<string, string>
+/** Latest non-null `aggressively_quantized` per (plan_id, model_id); `rows` should be ordered by `run_at` descending. */
+function buildLatestAggressiveMap(
+  rows: Array<Pick<BenchmarkRun, 'plan_id' | 'model_id' | 'aggressively_quantized' | 'run_at'>>,
+  target: Map<string, boolean>
 ): void {
   for (const r of rows) {
-    const q = typeof r.quantization === 'string' ? r.quantization.trim() : '';
-    if (!q) {
+    if (typeof r.aggressively_quantized !== 'boolean') {
       continue;
     }
     const key = `${r.plan_id}:${r.model_id}`;
     if (!target.has(key)) {
-      target.set(key, q);
+      target.set(key, r.aggressively_quantized);
     }
   }
 }
@@ -472,22 +473,22 @@ function buildLatestQuantizationMap(
 function mapProvidersToDirectory(
   providers: ProviderWithPlansAndModels[],
   statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
-  latestQuantByPlanModel: Map<string, string>
+  latestAggressiveByPlanModel: Map<string, boolean>
 ): DirectoryProvider[] {
   return providers
-    .map(p => mapOneProvider(p, statsByPlanModel, latestQuantByPlanModel))
+    .map(p => mapOneProvider(p, statsByPlanModel, latestAggressiveByPlanModel))
     .filter(dp => dp.plans.length > 0);
 }
 
 function mapOneProvider(
   provider: ProviderWithPlansAndModels,
   statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
-  latestQuantByPlanModel: Map<string, string>
+  latestAggressiveByPlanModel: Map<string, boolean>
 ): DirectoryProvider {
   const plans = (provider.plans ?? [])
     .filter(pl => pl.is_active)
     .sort((a, b) => comparePlansByPriceThenName(a, b))
-    .map(pl => mapOnePlan(pl, statsByPlanModel, latestQuantByPlanModel))
+    .map(pl => mapOnePlan(pl, statsByPlanModel, latestAggressiveByPlanModel))
     .filter((pl): pl is DirectoryPlan => pl !== null);
 
   return {
@@ -515,7 +516,7 @@ function comparePlansByPriceThenName(
 function mapOnePlan(
   plan: ProviderWithPlansAndModels['plans'][number],
   statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
-  latestQuantByPlanModel: Map<string, string>
+  latestAggressiveByPlanModel: Map<string, boolean>
 ): DirectoryPlan | null {
   const junctions = [...(plan.plan_models ?? [])].sort((a, b) => {
     const na = a.models?.name ?? '';
@@ -531,31 +532,18 @@ function mapOnePlan(
     }
     const key = `${plan.id}:${pm.model_id}`;
     const stats = statsByPlanModel.get(key);
-    const latestQ = latestQuantByPlanModel.get(key)?.trim();
+    const latestAggressive = latestAggressiveByPlanModel.get(key);
 
-    const modelRowBase = {
+    modelRows.push({
       rowId: `${plan.slug}:${model.slug}`,
       modelId: model.id,
       modelSlug: model.slug,
       modelName: model.name,
       usageLabel: USAGE_PLACEHOLDER,
       tps: stats?.avgTps != null ? Math.round(stats.avgTps) : 0,
-      ttftS: stats?.avgTtftS ?? null
-    };
-
-    if (!latestQ) {
-      modelRows.push({
-        ...modelRowBase,
-        quantization: 'untested',
-        quantizationStatus: 'untested' as const
-      });
-    } else {
-      modelRows.push({
-        ...modelRowBase,
-        quantization: latestQ,
-        quantizationStatus: inferQuantizationStatusFromLabel(latestQ)
-      });
-    }
+      ttftS: stats?.avgTtftS ?? null,
+      quantizationStatus: aggressiveBoolToStatus(latestAggressive)
+    });
   }
 
   if (modelRows.length === 0) {
@@ -574,19 +562,12 @@ function mapOnePlan(
 
 const USAGE_PLACEHOLDER = '—';
 
-/**
- * Low-bit integer weights (INT4/INT8, etc.) — flag like provider page “aggressive” tiers (red, not FP16-green).
- * Shared with directory, provider page, and plan page quantization display.
- */
-export function inferQuantizationStatusFromLabel(quantization: string): 'scam' | 'verified' {
-  const q = quantization.toLowerCase();
-  if (q.includes('scam') || /\breset\b/.test(q)) {
-    return 'scam';
+/** Map nullable bool (`undefined` = absent in map = untested) to the three-bucket display status. */
+function aggressiveBoolToStatus(aggressive: boolean | undefined): QuantizationStatus {
+  if (aggressive === undefined) {
+    return 'untested';
   }
-  if (/\bint4\b|\bint8\b/.test(q) || q.includes('int8/4') || q.includes('int4/8')) {
-    return 'scam';
-  }
-  return 'verified';
+  return aggressive ? 'aggressive' : 'standard';
 }
 
 function utcDayKeyFromIso(iso: string): string {
@@ -652,8 +633,7 @@ function buildQuantRunsForModel(modelId: string, runs: BenchmarkRun[]): PlanQuan
     if (r.model_id !== modelId) {
       continue;
     }
-    const q = typeof r.quantization === 'string' ? r.quantization.trim() : '';
-    if (!q) {
+    if (typeof r.aggressively_quantized !== 'boolean') {
       continue;
     }
     const { dayLabel, timeLabel } = formatRunDayTimeUtc(r.run_at);
@@ -661,8 +641,7 @@ function buildQuantRunsForModel(modelId: string, runs: BenchmarkRun[]): PlanQuan
       runAtIso: r.run_at,
       dayLabel,
       timeLabel,
-      label: q,
-      status: inferQuantizationStatusFromLabel(q)
+      status: r.aggressively_quantized ? 'aggressive' : 'standard'
     });
   }
   rows.sort((a, b) => b.runAtIso.localeCompare(a.runAtIso));
@@ -693,19 +672,19 @@ function formatMonthlyPrice(amount: number | null, currency: string): string {
 function mapPlansForProviderPage(
   provider: ProviderWithPlansAndModels,
   statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
-  latestQuantByPlanModel: Map<string, string>
+  latestAggressiveByPlanModel: Map<string, boolean>
 ): ProviderPagePlan[] {
   return (provider.plans ?? [])
     .filter(pl => pl.is_active)
     .sort((a, b) => comparePlansByPriceThenName(a, b))
-    .map(pl => mapOnePlanForProviderPage(pl, statsByPlanModel, latestQuantByPlanModel))
+    .map(pl => mapOnePlanForProviderPage(pl, statsByPlanModel, latestAggressiveByPlanModel))
     .filter((p): p is ProviderPagePlan => p !== null);
 }
 
 function mapOnePlanForProviderPage(
   plan: ProviderWithPlansAndModels['plans'][number],
   statsByPlanModel: Map<string, PlanModelBenchmarkStats>,
-  latestQuantByPlanModel: Map<string, string>
+  latestAggressiveByPlanModel: Map<string, boolean>
 ): ProviderPagePlan | null {
   const junctions = [...(plan.plan_models ?? [])].sort((a, b) =>
     (a.models?.name ?? '').localeCompare(b.models?.name ?? '')
@@ -719,22 +698,18 @@ function mapOnePlanForProviderPage(
     }
     const key = `${plan.id}:${pm.model_id}`;
     const stats = statsByPlanModel.get(key);
-    const latestQ = latestQuantByPlanModel.get(key)?.trim();
+    const latestAggressive = latestAggressiveByPlanModel.get(key);
 
     let quantizationColor: ProviderPageQuantColor;
-    let quantization: string;
-    if (!latestQ) {
-      quantization = '—';
+    if (latestAggressive === undefined) {
       quantizationColor = 'neutral';
     } else {
-      quantization = latestQ;
-      quantizationColor = inferQuantizationStatusFromLabel(latestQ) === 'scam' ? 'tertiary' : 'secondary';
+      quantizationColor = latestAggressive ? 'tertiary' : 'secondary';
     }
 
     models.push({
       id: model.slug,
       name: model.name,
-      quantization,
       quantizationColor,
       tps: stats?.avgTps != null ? String(Math.round(stats.avgTps)) : '—',
       ttft: formatTtftSeconds(stats?.avgTtftS ?? null)

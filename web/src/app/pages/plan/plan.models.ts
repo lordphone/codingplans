@@ -1,5 +1,5 @@
-/** Quantization benchmark row: only measured labels (no `untested` rows). */
-export type PlanQuantRunStatus = 'scam' | 'verified';
+/** Quantization run row: only runs with a non-null `aggressively_quantized` value (no `untested` rows). */
+export type PlanQuantRunStatus = 'aggressive' | 'standard';
 
 export interface PlanPerformanceDayPoint {
   /** UTC calendar day YYYY-MM-DD */
@@ -16,7 +16,6 @@ export interface PlanQuantRunRow {
   runAtIso: string;
   dayLabel: string;
   timeLabel: string;
-  label: string;
   status: PlanQuantRunStatus;
 }
 
