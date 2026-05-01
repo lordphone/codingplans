@@ -49,7 +49,7 @@ _FIDELITY_DIR = _HERE.parent
 if str(_FIDELITY_DIR) not in sys.path:
     sys.path.insert(0, str(_FIDELITY_DIR))
 
-from common import PromptItem  # noqa: E402
+from framework import PromptItem  # noqa: E402
 
 __all__ = [
     "FILLER_CORPUS_VERSION",

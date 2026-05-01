@@ -53,14 +53,14 @@ reusable across many provider comparisons (e.g. one official z.ai run feeds
 all 5 GLM-5 plan audits):
 
 1. **Single-endpoint runner.** `run_<test>(endpoint, *, panel, n_samples, max_tokens, schedule_seed, sleep_range, …) -> (RunResult, raw_rows)`. Hits exactly one endpoint. No `target`/`reference` distinction; that lives in the comparison step only.
-2. **Self-describing artifact.** Each run writes `<stamp>_<endpoint_label>_<test>.summary.json` (a serialized `RunResult` from `fidelity/common.py`) plus a `.jsonl` per-call forensic log. The summary carries `schema_version`, `panel_id`, `panel_size`, `prompt_hash`, `n_samples`, `max_tokens`, `schedule_seed`, `sleep_range_s`, endpoint metadata, and per-prompt outcomes.
-3. **Compare = pure function.** `compare_<test>(reference, target) -> Report`. No HTTP, no env, no I/O. Calls `assert_comparable()` (in `fidelity/common.py`) which refuses to compare runs with mismatched `schema_version`, `test_name`, `panel_id`, `panel_size`, `prompt_hash`, `n_samples`, or `max_tokens`. Sleep range and schedule seed are stealth knobs and **do not** affect comparability.
+2. **Self-describing artifact.** Each run writes `<stamp>_<endpoint_label>_<test>.summary.json` (a serialized `RunResult` from `fidelity/framework.py`) plus a `.jsonl` per-call forensic log. The summary carries `schema_version`, `panel_id`, `panel_size`, `prompt_hash`, `n_samples`, `max_tokens`, `schedule_seed`, `sleep_range_s`, endpoint metadata, and per-prompt outcomes.
+3. **Compare = pure function.** `compare_<test>(reference, target) -> Report`. No HTTP, no env, no I/O. Calls `assert_comparable()` (in `fidelity/framework.py`) which refuses to compare runs with mismatched `schema_version`, `test_name`, `panel_id`, `panel_size`, `prompt_hash`, `n_samples`, or `max_tokens`. Sleep range and schedule seed are stealth knobs and **do not** affect comparability.
 4. **CLI.** Each `test_*.py` takes `--endpoint <slug>` (slug from `targets.ENDPOINTS`), runs once, writes artifacts to its family's `runs/` (e.g. `model_identity/runs/`). The shared `fidelity/compare.py` joins any two artifacts.
 5. **Stealth.** Use `StealthChatClient` (rotated UA, jittered pacing) and a shuffled `make_schedule`. No batch APIs, ever.
 6. **Panel versioning.** Each family keeps its own `prompts.py` (e.g. `model_identity/prompts.py`). Bump the `_v1` suffix on `*_PANEL_ID` whenever prompt content changes — that invalidates old artifacts via `prompt_hash` and `panel_id` mismatch checks.
 
 **Layout** — shared plumbing at `benchmarks/fidelity/` (`client.py`,
-`targets.py`, `common.py`, `compare.py`); family-specific data and drivers in
+`targets.py`, `framework.py`, `compare.py`); family-specific data and drivers in
 subfolders (`model_identity/`, `long_context/`). Each family owns its own
 panel data (e.g. `prompts.py` or a programmatic builder) and `runs/`.
 

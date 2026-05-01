@@ -32,7 +32,7 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "model_identity"))
 sys.path.insert(0, str(_HERE / "long_context"))
 
-from common import read_run_result  # noqa: E402
+from framework import read_run_result  # noqa: E402
 
 # model_identity/
 from test_arithmetic import TEST_NAME as ARITHMETIC, compare_arithmetic  # noqa: E402

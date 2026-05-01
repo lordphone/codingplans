@@ -52,7 +52,7 @@ _FIDELITY_DIR = _HERE.parent
 if str(_FIDELITY_DIR) not in sys.path:
     sys.path.insert(0, str(_FIDELITY_DIR))
 
-from common import (  # noqa: E402
+from framework import (  # noqa: E402
     ChatRequest,
     Endpoint,
     PromptItem,
@@ -68,7 +68,7 @@ from common import (  # noqa: E402
     utc_stamp,
     write_run_artifacts,
 )
-from needle_common import (  # noqa: E402
+from needle import (  # noqa: E402
     FILLER_CORPUS_VERSION,
     build_aggregation_messages,
     format_panel_signature,

@@ -20,6 +20,6 @@ Implemented under `long_context/`:
 - `needle_single` — `long_context/test_needle_single.py` (2D length × depth grid)
 - `needle_multi` — `long_context/test_needle_multi.py` (K needles per prompt)
 - `needle_aggregation` — `long_context/test_needle_aggregation.py` (M scattered values, sum)
-- `needle_common` — `long_context/needle_common.py` (filler generator + insertion + grid helpers)
+- `needle` — `long_context/needle.py` (filler generator + insertion + grid helpers)
 
 No empty placeholder families — every directory under `fidelity/` has at least one runnable test.
