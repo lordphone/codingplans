@@ -87,7 +87,7 @@ components:
 
 **Coding Plan Comparison** (Brand & style) is a read-only, technical **directory** of AI coding plans and models. The UI should feel **institutional and data-forward**: high contrast, monospace for data and metadata, semantic greens and burgundy from theme `secondary` / `tertiary`, and **no** decorative illustration.
 
-This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification/)**: YAML above is **normative**; sections below are **rationale**. Stack, routes, and data are **not** defined here; see [AGENTS.md](AGENTS.md). **Source of truth in code:** [web/src/styles.css](web/src/styles.css) (`@theme`); this document stays aligned with that file.
+This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification/)**: YAML above is **normative**; sections below are **rationale**. Stack, routes, and data are **not** defined here; see [AGENTS.md](AGENTS.md). **Source of truth in code:** the web app's Tailwind theme entry point (TBD — re-establish once the new `web/` app is scaffolded); this document stays aligned with that file.
 
 ## Colors
 
@@ -100,7 +100,7 @@ This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoog
 
 ### Design tokens
 
-The `colors` map matches **`@theme` in** `web/src/styles.css`. When you change a token, update both places.
+The `colors` map should match `@theme` in the web app's Tailwind entry CSS (path TBD after rebuild). When you change a token, update both places.
 
 ## Typography
 
@@ -137,7 +137,7 @@ See `rounded` in the front matter.
 
 ## Components
 
-- **Top navigation:** Wordmark; **DIRECTORY** / **BENCHMARKS**; version in mono. Active link: **`text-primary`** and **bottom border** (see [layout](web/src/app/components/layout/layout.component.ts)).
+- **Top navigation:** Wordmark; **DIRECTORY** / **BENCHMARKS**; version in mono. Active link: **`text-primary`** and **bottom border** (implementation pending the `web/` rebuild).
 - **Directory table:** Bordered **card**; TPS minibar fill uses **primary**; links use `hover:` **accent-interactive** and matching underline.
 - **Search:** `focus:border-accent-interactive`.
 - **Refresh strip:** `catalog-refresh-strip` — `hover:border-accent-interactive` and `hover:text-primary` on the button.

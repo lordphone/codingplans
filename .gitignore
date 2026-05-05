@@ -1,9 +1,10 @@
 # Dependencies
 node_modules/
 
-# Angular / build output
+# Web build output
+web/build/
+web/.svelte-kit/
 web/dist/
-web/.angular/
 
 # Python
 __pycache__/
