@@ -6,14 +6,20 @@ A website comparing AI coding plans that monitors whether providers deliver prom
 
 ## Tech Stack
 
-- **Frontend:** _TBD — being rebuilt from scratch (planned: SvelteKit)._ Will live under `web/`.
-- **Database:** Supabase (PostgreSQL + PostgREST)
-- **Benchmarks:** Python scripts under `benchmarks/`; CI deploy does **not** run benchmarks (only builds the web app)
+- **Frontend:** **SvelteKit** with **Svelte 5 (runes mode)**, **TypeScript**, **Tailwind CSS 4**. Lives under `web/`.
+- **Deploy:** `@sveltejs/adapter-static` → GitHub Pages (static prerendered HTML, base path `/codingplans`).
+- **Database:** Supabase (PostgreSQL + PostgREST), accessed from the browser via `@supabase/supabase-js`.
+- **Benchmarks:** Python scripts under `benchmarks/`; CI deploy does **not** run benchmarks (only builds the web app).
+- **Tooling:** `prettier`, `eslint`, `npm`. No unit-test framework wired in yet.
+
+### Svelte 5
+
+This project uses **Svelte 5 in runes mode**. Refer to the official docs at svelte.dev/docs/svelte for current syntax and APIs.
 
 ## Architecture
 
 ```
-Web app ──► Supabase DB ◄── GitHub Actions / local scripts (benchmark writers)
+SvelteKit (web/) ──► Supabase DB ◄── GitHub Actions / local scripts (benchmark writers)
 ```
 
 ## Python benchmarks
