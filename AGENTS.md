@@ -58,6 +58,12 @@ Existing references: `benchmarks/fidelity/model_identity/test_arithmetic.py`,
 `test_needle_multi.py`, `test_needle_aggregation.py`, and
 `benchmarks/fidelity/compare.py`.
 
+**Design context:** `benchmarks/fidelity/IMPROVEMENTS.md` (rationale behind the signal-to-noise tightening) and `benchmarks/fidelity/THREATS.md` (adversarial model for stealth knobs) are required reading before changing test contracts or the framework.
+
+**Adding a benchmark endpoint:** see the module docstring in `benchmarks/fidelity/targets.py` — it covers slug conventions and the `<SLUG>_BASE_URL` / `<SLUG>_API_KEY_ENV` override pattern.
+
+**Run artifacts** under each family's `runs/` directory are local-only; only a `.gitkeep` is tracked. Don't commit `.summary.json` / `.jsonl` outputs.
+
 **Run flow (per test, per model):**
 
 1. Run reference once: `python benchmarks/fidelity/model_identity/test_arithmetic.py --endpoint glm5-official` → writes `summary.json` + `.jsonl` under `model_identity/runs/`. Reusable across every plan comparison for the same model.
@@ -127,3 +133,7 @@ When writing benchmark rows, resolve API model name → `models.id`.
 
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`
 - Prefer small, focused commits
+
+## Repo conventions
+
+- `CLAUDE.md` is a symlink → `AGENTS.md` (single source of truth). Edit `AGENTS.md`; if the symlink ever gets clobbered, restore it with `ln -sf AGENTS.md CLAUDE.md`.
