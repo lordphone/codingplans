@@ -6,10 +6,11 @@ A website comparing AI coding plans that monitors whether providers deliver prom
 
 ## Tech Stack
 
-- **Frontend:** **SvelteKit** with **Svelte 5 (runes mode)**, **TypeScript**, **Tailwind CSS 4**. Lives under `web/`.
-- **Deploy:** `@sveltejs/adapter-static` → GitHub Pages (static prerendered HTML, base path `/codingplans`).
+- **Frontend:** **SvelteKit** with **Svelte 5 (runes mode)**, **TypeScript**, **Tailwind CSS 4**. Lives under `web/`. Currently the SvelteKit demo template — directory/benchmarks routes described below are spec, not yet implemented.
+- **Deploy:** `@sveltejs/adapter-static` → GitHub Pages (static prerendered HTML). Target base path `/codingplans` — **not yet configured** in `web/svelte.config.js`; set `kit.paths.base` before the first deploy.
 - **Database:** Supabase (PostgreSQL + PostgREST), accessed from the browser via `@supabase/supabase-js`.
 - **Benchmarks:** Python scripts under `benchmarks/`; CI deploy does **not** run benchmarks (only builds the web app).
+- **Design system:** See `DESIGN.md` (Stitch spec — colors, typography, chart tokens). The `colors` / `typography` maps there are the source of truth and must stay aligned with the Tailwind `@theme` entry once the web app's CSS is re-established.
 - **Tooling:** `prettier`, `eslint`, `npm`. No unit-test framework wired in yet.
 
 ### Svelte 5
@@ -21,6 +22,23 @@ This project uses **Svelte 5 in runes mode**. Refer to the official docs at svel
 ```
 SvelteKit (web/) ──► Supabase DB ◄── GitHub Actions / local scripts (benchmark writers)
 ```
+
+## Frontend (web/)
+
+All `npm` scripts run from inside `web/`:
+
+```bash
+cd web/
+npm install
+npm run dev        # vite dev server
+npm run build      # static build via adapter-static → web/build
+npm run preview    # serve the production build locally
+npm run check      # svelte-kit sync + svelte-check (type/diagnostics)
+npm run lint       # prettier --check . && eslint .
+npm run format     # prettier --write .
+```
+
+No unit-test runner is wired in; `npm run check` is the only automated correctness gate today.
 
 ## Python benchmarks
 
@@ -82,14 +100,22 @@ Existing references: `benchmarks/fidelity/model_identity/test_arithmetic.py`,
 │   └── providers.json     # benchmark matrix (API keys via env only; tracked)
 ├── requirements.txt       # Python deps for benchmarks
 ├── supabase/              # CLI-managed: config.toml, migrations/, seed_*.sql
-└── web/                   # _TBD: web app (rebuild in progress)_
+└── web/                   # SvelteKit app (rebuild in progress — demo template at HEAD)
 ```
-
-**Schema changes** live as SQL files under `supabase/migrations/` and are applied via the Supabase CLI (`supabase db push`). The repo is linked to the live project (`supabase/config.toml`), so `supabase migration list` shows local-vs-remote sync.
 
 ## Database (Supabase)
 
-**Source of truth:** live Postgres in Supabase. Migrations live in `supabase/migrations/`; apply via `supabase db push`. Regenerate generated DB types after schema changes via `supabase gen types typescript --linked` (wire the script up inside `web/` once the new app is scaffolded).
+**Source of truth:** live Postgres in Supabase. Schema changes are SQL files under `supabase/migrations/`; the repo is linked to the live project via `supabase/config.toml`.
+
+**Common Supabase CLI ops** (run from repo root):
+
+```bash
+supabase migration list                       # compare local migrations vs remote
+supabase db push                              # apply pending migrations to the linked project
+supabase gen types typescript --linked        # regenerate DB types (wire into web/ once stable)
+```
+
+**Important:** the directory-query semantics below describe how a client *should* read the schema. **No client code currently implements them** — the `web/` app is still the SvelteKit demo template. Treat this section as a spec for the rebuild.
 
 **Core tables**
 
