@@ -39,6 +39,7 @@ Schedule shuffling note:
 from __future__ import annotations
 
 import random
+import string
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,6 +66,8 @@ __all__ = [
     "build_aggregation_messages",
     "make_length_depth_grid",
     "format_panel_signature",
+    "needle_value",
+    "NEEDLE_VALUE_PATTERN",
 ]
 
 
@@ -260,6 +263,23 @@ def insert_many_at_depths(
     for line, d in items:
         out = insert_at_depth(out, line, d)
     return out
+
+
+# Regex source matching the tokens needle_value() emits: two 5-char
+# uppercase-alphanumeric groups joined by a dash (e.g. `QFXR7-MTPL3`).
+# Reply parsers across the family build their regexes from this so the
+# value shape lives in exactly one place alongside its generator.
+NEEDLE_VALUE_PATTERN = r"[A-Z0-9]{5}-[A-Z0-9]{5}"
+
+
+def needle_value(rng: random.Random) -> str:
+    """Generate a 2-group alphanumeric token like `QFXR7-MTPL3`. Long enough
+    to be distinctive, short enough to fit in a 50-token reply."""
+    alphabet = string.ascii_uppercase + string.digits
+    return "-".join(
+        "".join(rng.choice(alphabet) for _ in range(5))
+        for _ in range(2)
+    )
 
 
 # ---------------------------------------------------------------------------

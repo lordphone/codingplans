@@ -65,6 +65,7 @@ from framework import (  # noqa: E402
     load_dotenv,
     make_schedule,
     panel_hash,
+    parse_int_list,
     utc_stamp,
     write_run_artifacts,
 )
@@ -566,17 +567,13 @@ def compare_needle_aggregation(
 # ---------------------------------------------------------------------------
 
 
-def _parse_int_list(text: str) -> list[int]:
-    return [int(x) for x in text.split(",") if x.strip()]
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--endpoint", required=True,
                         help="Endpoint slug from targets.ENDPOINTS")
     parser.add_argument("--n", type=int, default=DEFAULT_N_SAMPLES,
                         help=f"Samples per cell (default {DEFAULT_N_SAMPLES})")
-    parser.add_argument("--lengths", type=_parse_int_list,
+    parser.add_argument("--lengths", type=parse_int_list,
                         default=list(DEFAULT_LENGTHS),
                         help="Comma-separated character lengths to sweep")
     parser.add_argument("--m", type=int, default=DEFAULT_M,

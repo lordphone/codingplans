@@ -38,7 +38,6 @@ from __future__ import annotations
 import argparse
 import random
 import re
-import string
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,16 +61,20 @@ from framework import (  # noqa: E402
     load_dotenv,
     make_schedule,
     panel_hash,
+    parse_float_list,
+    parse_int_list,
     utc_stamp,
     write_run_artifacts,
 )
 from needle import (  # noqa: E402
     FILLER_CORPUS_VERSION,
+    NEEDLE_VALUE_PATTERN,
     build_single_needle_paraphrased_messages,
     format_panel_signature,
     generate_filler,
     insert_many_at_depths,
     make_length_depth_grid,
+    needle_value,
 )
 
 RUNS_DIR = _HERE / "runs"
@@ -109,16 +112,6 @@ DEFAULT_DISTRACTORS = 2
 _DISTRACTOR_SUFFIXES = ("LEGACY", "RETIRED", "STAGING", "DEPRECATED", "BACKUP")
 
 
-def _needle_value(rng: random.Random) -> str:
-    """Generate a 2-group alphanumeric token like `QFXR7-MTPL3`. Long enough
-    to be distinctive, short enough to fit in a 50-token reply."""
-    alphabet = string.ascii_uppercase + string.digits
-    return "-".join(
-        "".join(rng.choice(alphabet) for _ in range(5))
-        for _ in range(2)
-    )
-
-
 def _build_panel(
     *,
     lengths: Sequence[int],
@@ -152,7 +145,7 @@ def _build_panel(
     panel: list[PromptItem] = []
     for length, depth in make_length_depth_grid(lengths, depths):
         # Fresh random-looking but deterministic value per (length, depth).
-        value = _needle_value(needle_rng)
+        value = needle_value(needle_rng)
         haystack = base_filler[:length]
 
         # True needle at the cell's depth.
@@ -166,7 +159,7 @@ def _build_panel(
         # each other, in order around the depth circle.
         for k in range(distractors):
             distractor_depth = (depth + (k + 1) / (distractors + 1)) % 1.0
-            distractor_value = _needle_value(needle_rng)
+            distractor_value = needle_value(needle_rng)
             suffix = _DISTRACTOR_SUFFIXES[k]
             lines.append(
                 (f"# OPERATIONAL_TOKEN_{suffix} = {distractor_value}", distractor_depth)
@@ -199,7 +192,7 @@ def _build_panel(
 # Used for parsing the model's reply. We expect a bare value like
 # `QFXR7-MTPL3` but allow a small amount of slop (quoting, prose) by
 # extracting the longest 5-char–dash–5-char token in the response.
-_VALUE_RE = re.compile(r"[A-Z0-9]{5}-[A-Z0-9]{5}")
+_VALUE_RE = re.compile(NEEDLE_VALUE_PATTERN)
 
 
 def _parse_value(content: str) -> str | None:
@@ -519,24 +512,16 @@ def compare_single_needle(
 # ---------------------------------------------------------------------------
 
 
-def _parse_int_list(text: str) -> list[int]:
-    return [int(x) for x in text.split(",") if x.strip()]
-
-
-def _parse_float_list(text: str) -> list[float]:
-    return [float(x) for x in text.split(",") if x.strip()]
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--endpoint", required=True,
                         help="Endpoint slug from targets.ENDPOINTS")
     parser.add_argument("--n", type=int, default=DEFAULT_N_SAMPLES,
                         help=f"Samples per cell (default {DEFAULT_N_SAMPLES})")
-    parser.add_argument("--lengths", type=_parse_int_list,
+    parser.add_argument("--lengths", type=parse_int_list,
                         default=list(DEFAULT_LENGTHS),
                         help="Comma-separated character lengths to sweep")
-    parser.add_argument("--depths", type=_parse_float_list,
+    parser.add_argument("--depths", type=parse_float_list,
                         default=list(DEFAULT_DEPTHS),
                         help="Comma-separated fractional depths in [0,1]")
     parser.add_argument("--filler-seed", type=int, default=DEFAULT_FILLER_SEED)

@@ -41,7 +41,6 @@ from __future__ import annotations
 import argparse
 import random
 import re
-import string
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,15 +65,19 @@ from framework import (  # noqa: E402
     load_dotenv,
     make_schedule,
     panel_hash,
+    parse_float_list,
+    parse_int_list,
     utc_stamp,
     write_run_artifacts,
 )
 from needle import (  # noqa: E402
     FILLER_CORPUS_VERSION,
+    NEEDLE_VALUE_PATTERN,
     build_multi_needle_messages,
     format_panel_signature,
     generate_filler,
     insert_many_at_depths,
+    needle_value,
 )
 
 RUNS_DIR = _HERE / "runs"
@@ -115,14 +118,6 @@ CURVATURE_GAP_THRESHOLD = 0.50  # in recall-units / depth² (recall ∈ [0,1])
 HEALTHY_LENGTH_RECALL_FLOOR = 0.5
 
 
-def _needle_value(rng: random.Random) -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    return "-".join(
-        "".join(rng.choice(alphabet) for _ in range(5))
-        for _ in range(2)
-    )
-
-
 def _build_panel(
     *,
     lengths: Sequence[int],
@@ -147,7 +142,7 @@ def _build_panel(
         # Pre-roll all needle values for this prompt up front, in order
         # 1..K, before any insertion. Determinism: same panel inputs →
         # same (idx, depth, value) tuples for every run.
-        values = [_needle_value(needle_rng) for _ in range(k)]
+        values = [needle_value(needle_rng) for _ in range(k)]
         needles = [
             (i + 1, d, v) for i, (d, v) in enumerate(zip(depths, values))
         ]
@@ -183,7 +178,7 @@ def _build_panel(
 # Parser for replies of the form `1=QFXR7-MTPL3` (one per line). Tolerant
 # of extra whitespace, but anchored to the value shape so prose can't
 # poison the parse.
-_FACT_RE = re.compile(r"\b(\d+)\s*=\s*([A-Z0-9]{5}-[A-Z0-9]{5})", re.IGNORECASE)
+_FACT_RE = re.compile(rf"\b(\d+)\s*=\s*({NEEDLE_VALUE_PATTERN})", re.IGNORECASE)
 
 
 def _parse_facts(content: str) -> dict[int, str]:
@@ -554,24 +549,16 @@ def compare_needle_multi(
 # ---------------------------------------------------------------------------
 
 
-def _parse_int_list(text: str) -> list[int]:
-    return [int(x) for x in text.split(",") if x.strip()]
-
-
-def _parse_float_list(text: str) -> list[float]:
-    return [float(x) for x in text.split(",") if x.strip()]
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--endpoint", required=True,
                         help="Endpoint slug from targets.ENDPOINTS")
     parser.add_argument("--n", type=int, default=DEFAULT_N_SAMPLES,
                         help=f"Samples per cell (default {DEFAULT_N_SAMPLES})")
-    parser.add_argument("--lengths", type=_parse_int_list,
+    parser.add_argument("--lengths", type=parse_int_list,
                         default=list(DEFAULT_LENGTHS),
                         help="Comma-separated character lengths to sweep")
-    parser.add_argument("--depths", type=_parse_float_list,
+    parser.add_argument("--depths", type=parse_float_list,
                         default=list(DEFAULT_DEPTHS),
                         help="Comma-separated fractional depths in [0,1]; "
                              "K is set to len(depths)")

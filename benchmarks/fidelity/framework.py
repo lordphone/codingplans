@@ -63,6 +63,8 @@ __all__ = [
     "modal",
     "normalize_text",
     "panel_hash",
+    "parse_float_list",
+    "parse_int_list",
     "rank1_mass",
     "read_run_result",
     "renyi2_entropy",
@@ -260,11 +262,23 @@ def normalize_text(s: str) -> str:
     return s
 
 
+def parse_int_list(text: str) -> list[int]:
+    """Parse a comma-separated string into a list of ints, skipping blanks.
+    Used as an argparse `type=` for sweep arguments like `--lengths`."""
+    return [int(x) for x in text.split(",") if x.strip()]
+
+
+def parse_float_list(text: str) -> list[float]:
+    """Parse a comma-separated string into a list of floats, skipping blanks.
+    Used as an argparse `type=` for sweep arguments like `--depths`."""
+    return [float(x) for x in text.split(",") if x.strip()]
+
+
 def fit_quadratic(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float, float]:
     """Closed-form least-squares fit of y = a + b*x + c*x**2.
 
     Returns (a, b, c). The curvature coefficient `c` is what we test for
-    the multi-needle smile-shape: a smile at depth ∈ [0,1] has c < 0
+    the multi-needle smile-shape: a smile at depth ∈ [0,1] has c > 0
     (peaks at the edges, dips in the middle). With ≥3 points and any
     spread in xs the 3x3 normal-equation system is well-conditioned;
     raises ValueError on degenerate input."""
