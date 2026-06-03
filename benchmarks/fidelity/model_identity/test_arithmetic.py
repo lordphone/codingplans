@@ -322,7 +322,11 @@ def compare_arithmetic(reference: RunResult, target: RunResult) -> ArithmeticRep
         if tp is None:
             continue
         meta = rp.meta or {}
-        expected = int(meta.get("expected"))
+        if "expected" not in meta:
+            raise ValueError(
+                f"prompt {idx} missing 'expected' in meta; artifact is malformed"
+            )
+        expected = int(meta["expected"])
         digits = int(meta.get("digits", 0))
 
         rs = _side_stats(rp.completions, expected)
