@@ -1,42 +1,28 @@
-# sv
+# web — Coding Plan Comparison
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
-
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
+Static SvelteKit (Svelte 5 runes) site, prerendered at build time and deployed to GitHub Pages.
 
 ```sh
-# create a new project
-npx sv create my-app
+npm install
+npm run dev                                   # uses web/.env if present
+PUBLIC_DATA_SOURCE=fixtures npm run dev       # sample data + banner
+npm run check && npm run lint
+BASE_PATH=/codingplans npm run build          # → build/
+npm run preview
 ```
 
-To recreate this project with the same configuration:
+Environment (all public; see `.env.example`):
 
-```sh
-# recreate this project
-npx sv@0.15.2 create --template demo --types ts --add tailwindcss="plugins:none" eslint prettier sveltekit-adapter="adapter:static" --install npm web
-```
+| Variable                   | Purpose                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| `PUBLIC_SUPABASE_URL`      | Supabase project URL (read at build time only)                 |
+| `PUBLIC_SUPABASE_ANON_KEY` | anon / publishable key (RLS: SELECT only)                      |
+| `PUBLIC_DATA_SOURCE`       | `fixtures` → build from `src/lib/data/fixtures.ts` (sample)    |
+| `BASE_PATH`                | path prefix, e.g. `/codingplans` for GitHub Pages (CI sets it) |
 
-## Developing
+Without Supabase variables (and not in fixtures mode) the build succeeds with empty states.
+A Supabase error during build fails the build.
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+Layout: data access lives in `src/lib/data/` (`index.server.ts` is the only entry point pages use),
+UI primitives in `src/lib/components/`, methodology copy in `src/lib/content/tests.ts`,
+design tokens in `src/app.css` (mirrors `../DESIGN.md`).
