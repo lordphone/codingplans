@@ -87,7 +87,7 @@ components:
 
 **Coding Plan Comparison** (Brand & style) is a read-only, technical **directory** of AI coding plans and models. The UI should feel **institutional and data-forward**: high contrast, monospace for data and metadata, semantic greens and burgundy from theme `secondary` / `tertiary`, and **no** decorative illustration.
 
-This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification/)**: YAML above is **normative**; sections below are **rationale**. Stack, routes, and data are **not** defined here; see [AGENTS.md](AGENTS.md). **Source of truth in code:** the web app's Tailwind theme entry point (TBD — re-establish once the new `web/` app is scaffolded); this document stays aligned with that file.
+This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoogle.com/docs/design-md/specification/)**: YAML above is **normative**; sections below are **rationale**. Stack, routes, and data are **not** defined here; see [AGENTS.md](AGENTS.md). **Source of truth in code:** the `@theme` block in [`web/src/app.css`](web/src/app.css) (Tailwind entry; also holds the dark-mode token values); this document stays aligned with that file.
 
 ## Colors
 
@@ -100,7 +100,7 @@ This file follows the **[Stitch DESIGN.md specification](https://stitch.withgoog
 
 ### Design tokens
 
-The `colors` map should match `@theme` in the web app's Tailwind entry CSS (path TBD after rebuild). When you change a token, update both places.
+The `colors` map should match `@theme` in `web/src/app.css` (dark values are defined there under `prefers-color-scheme` / `[data-theme='dark']`). When you change a token, update both places.
 
 ## Typography
 

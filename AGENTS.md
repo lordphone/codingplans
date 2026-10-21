@@ -6,11 +6,11 @@ A website comparing AI coding plans that monitors whether providers deliver prom
 
 ## Tech Stack
 
-- **Frontend:** **SvelteKit** with **Svelte 5 (runes mode)**, **TypeScript**, **Tailwind CSS 4**. Lives under `web/`. Currently the SvelteKit demo template — directory/benchmarks routes described below are spec, not yet implemented.
-- **Deploy:** `@sveltejs/adapter-static` → GitHub Pages (static prerendered HTML). Target base path `/codingplans` — **not yet configured** in `web/svelte.config.js`; set `kit.paths.base` before the first deploy.
-- **Database:** Supabase (PostgreSQL + PostgREST), accessed from the browser via `@supabase/supabase-js`.
-- **Benchmarks:** Python scripts under `benchmarks/`; CI deploy does **not** run benchmarks (only builds the web app).
-- **Design system:** See `DESIGN.md` (Stitch spec — colors, typography, chart tokens). The `colors` / `typography` maps there are the source of truth and must stay aligned with the Tailwind `@theme` entry once the web app's CSS is re-established.
+- **Frontend:** **SvelteKit** with **Svelte 5 (runes mode)**, **TypeScript**, **Tailwind CSS 4**. Lives under `web/`. Routes: `/` (directory), `/providers/[provider]/`, `/providers/[provider]/[plan]/`, `/benchmarks/`, `/methodology/`.
+- **Deploy:** `@sveltejs/adapter-static` → GitHub Pages (static prerendered HTML, `404.html` fallback, `static/.nojekyll`). `kit.paths.base` comes from `BASE_PATH` (CI sets `BASE_PATH=/codingplans`; unset → domain root). Use `resolve()` from `$app/paths` for every internal link.
+- **Database:** Supabase (PostgreSQL + PostgREST), read with `@supabase/supabase-js` **at build time only** (server `load` functions during prerender) using the public anon key. The browser never talks to Supabase.
+- **Benchmarks:** Python scripts under `benchmarks/`. The `Deploy site` workflow only builds the web app; the separate `Audit plans` workflow (`.github/workflows/audit.yml`) runs scheduled audits/speed probes, ingests into Supabase, and triggers a redeploy.
+- **Design system:** See `DESIGN.md` (Stitch spec — colors, typography, chart tokens). The `colors` / `typography` maps there are the source of truth and must stay aligned with the Tailwind `@theme` block in `web/src/app.css` (which also defines the dark-mode values).
 - **Tooling:** `prettier`, `eslint`, `npm`. No unit-test framework wired in yet.
 
 ### Svelte 5
@@ -30,13 +30,36 @@ All `npm` scripts run from inside `web/`:
 ```bash
 cd web/
 npm install
-npm run dev        # vite dev server
+npm run dev        # vite dev server (reads web/.env if present)
 npm run build      # static build via adapter-static → web/build
-npm run preview    # serve the production build locally
+npm run preview    # serve the production build locally (set the same BASE_PATH as the build)
 npm run check      # svelte-kit sync + svelte-check (type/diagnostics)
 npm run lint       # prettier --check . && eslint .
 npm run format     # prettier --write .
+
+PUBLIC_DATA_SOURCE=fixtures BASE_PATH=/codingplans npm run build   # sample data, GH Pages paths
 ```
+
+**Build-time env** (all public; template in `web/.env.example`):
+
+| Variable                   | Effect                                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| `PUBLIC_SUPABASE_URL`      | Supabase project URL                                                                    |
+| `PUBLIC_SUPABASE_ANON_KEY` | anon / publishable key (SELECT-only via RLS)                                            |
+| `PUBLIC_DATA_SOURCE`       | `fixtures` → build from `src/lib/data/fixtures.ts` and show a "Sample data" banner      |
+| `BASE_PATH`                | path prefix (`/codingplans` on GitHub Pages)                                            |
+
+Without Supabase vars (and not in fixtures mode) the build succeeds with "No measurements published yet" empty states. **Any Supabase error during the build fails the build** — an empty site is never published silently.
+
+**Layout:**
+
+- `src/lib/data/` — all data access. `index.server.ts` (`loadDirectory()`, memoised per build; the only module pages import), `supabase.server.ts` (paged PostgREST reads), `fixtures.ts` (deterministic sample data), `shape.ts` (pure rows → view models; implements the directory semantics below), `types.ts` (hand-written row types + view models; swap for `supabase gen types` later).
+- `src/lib/components/` — UI primitives (StatusBadge, StatTile, SortHeader, TableCard, LineChart, BarMini, AuditTable, ModelMetricsTable, Banner, ThemeToggle, SiteNav, SiteFooter, …).
+- `src/lib/content/tests.ts` — methodology test catalogue (`TESTS`); ids match `audit_results.test_name` and are the `/methodology/#<id>` anchors.
+- `src/app.css` — Tailwind entry + `@theme` tokens (mirror `DESIGN.md`), dark-mode overrides, typography utilities.
+- Every page is prerendered (`prerender = true`, `trailingSlash = 'always'` in `src/routes/+layout.ts`); dynamic routes export `entries()` from the loaded directory.
+
+**Integrity verdict** per (plan, model) and per plan, from `latest_audit_results`: any `fail` → Flagged; all `pass` (≥1) → Verified; no rows → Untested; otherwise Partial.
 
 No unit-test runner is wired in; `npm run check` is the only automated correctness gate today.
 
@@ -47,6 +70,23 @@ python benchmarks/performance/benchmark.py
 python benchmarks/performance/check_credentials.py
 # fidelity (plan vs vendor reference): python benchmarks/fidelity/model_identity/test_arithmetic.py --help
 ```
+
+### Audit pipeline (preferred entry point)
+
+```bash
+python benchmarks/selftest.py --e2e                               # offline: unit checks + full pipeline vs a fake API
+python benchmarks/audit/preflight.py                              # one tiny call per endpoint with a key
+python benchmarks/audit/run_audit.py --dry-run                    # plan + missing keys
+python benchmarks/audit/run_audit.py --group glm-5 --tier quick [--ingest]
+python benchmarks/audit/run_audit.py --group glm-5 --tier quick --calibrate   # official vs official
+python benchmarks/audit/run_performance.py --samples 5 [--ingest]
+```
+
+**`benchmarks/endpoints.json`** is the single endpoint registry (base URL, key env, model id, thinking on/off params, `honest_user_agent`, `verified`) plus the `audits` groups (which plan endpoints are compared against which official reference, and their DB `provider_slug`/`plan_slug`/`model_slug`). `fidelity/targets.py` loads it. Tiers (`quick`/`standard`/`full`) and the CLI/headline adapters for every test live in `benchmarks/audit/registry.py`. Everything needed to run for real — keys per provider, Supabase, GitHub settings, ToS caveats — is in **`docs/REQUIREMENTS.md`**. Research behind the test choices: `docs/research/`.
+
+Env overrides used by tests/CI: `CODINGPLANS_ENDPOINTS_JSON`, `CODINGPLANS_RUNS_ROOT`, `CODINGPLANS_REPORTS_DIR`, and per-endpoint `<SLUG>_BASE_URL` / `<SLUG>_MODEL`.
+
+### Legacy performance script
 
 Reads **`benchmarks/providers.json`** (tracked in git): provider slug, API base URL, `api_key_env`, and model ids. Workload text comes from **`benchmarks/performance/scenarios.py`**, not this file. API keys stay in **`.env`** or CI secrets. Use **`check_credentials.py`** to confirm keys are loaded from `.env` without pasting them into `curl`.
 
@@ -67,13 +107,22 @@ all 5 GLM-5 plan audits):
 
 **Layout** — shared plumbing at `benchmarks/fidelity/` (`client.py`,
 `targets.py`, `framework.py`, `compare.py`); family-specific data and drivers in
-subfolders (`model_identity/`, `long_context/`). Each family owns its own
+subfolders (`model_identity/`, `long_context/`, `agentic/`, `integrity/`,
+`reasoning/`, `coding/`). Panel module names must be unique across families
+(`compare.py` puts every family on `sys.path`) — hence `tool_prompts.py`,
+`integrity_prompts.py`, etc. Each family owns its own
 panel data (e.g. `prompts.py` or a programmatic builder) and `runs/`.
 
 Existing references: `benchmarks/fidelity/model_identity/test_arithmetic.py`,
 `test_entropy.py`, `test_rollout_prefix.py`,
 `benchmarks/fidelity/long_context/test_needle_single.py`,
-`test_needle_multi.py`, `test_needle_aggregation.py`, and
+`test_needle_multi.py`, `test_needle_aggregation.py`, and the newer
+`run_panel` / `standard_cli`-based tests (`agentic/test_tool_calls.py`,
+`integrity/test_*.py`, `reasoning/test_reasoning_budget.py`,
+`coding/test_code_exec.py`), whose reports also expose a uniform headline
+(`metric`, `reference_value`, `target_value`, `p_value`, `inconclusive`,
+`fail`). New tests must be registered in `compare.py` and
+`audit/registry.py`, and get honest/cheating cases in `selftest.py`; and
 `benchmarks/fidelity/compare.py`.
 
 **Design context:** `benchmarks/fidelity/IMPROVEMENTS.md` (rationale behind the signal-to-noise tightening) and `benchmarks/fidelity/THREATS.md` (adversarial model for stealth knobs) are required reading before changing test contracts or the framework.
@@ -93,19 +142,24 @@ Existing references: `benchmarks/fidelity/model_identity/test_arithmetic.py`,
 ```
 .
 ├── .env.example           # template for repo-root .env (benchmarks; not committed secrets)
+├── .github/workflows/     # deploy.yml (site → Pages), audit.yml (scheduled audits + speed probes)
 ├── AGENTS.md
 ├── benchmarks/
-│   ├── performance/       # TPS / TTFT (benchmark.py, check_credentials.py, scenarios.py)
-│   ├── fidelity/          # model behavior vs reference: model_identity/, long_context/
-│   └── providers.json     # benchmark matrix (API keys via env only; tracked)
+│   ├── audit/             # orchestrator: run_audit.py, run_performance.py, preflight.py, ingest.py, registry.py
+│   ├── performance/       # TPS / TTFT primitives (benchmark.py, check_credentials.py, scenarios.py)
+│   ├── fidelity/          # tests vs reference: model_identity/, long_context/, agentic/, integrity/, reasoning/, coding/
+│   ├── endpoints.json     # endpoint registry + audit groups (tracked; keys via env only)
+│   ├── providers.json     # legacy matrix for performance/benchmark.py
+│   └── selftest.py        # offline checks + e2e against a fake API
+├── docs/                  # REQUIREMENTS.md (keys/setup/ToS), research/
 ├── requirements.txt       # Python deps for benchmarks
-├── supabase/              # CLI-managed: config.toml, migrations/, seed_*.sql
-└── web/                   # SvelteKit app (rebuild in progress — demo template at HEAD)
+├── supabase/              # CLI-managed: config.toml, migrations/, seed.sql (catalog)
+└── web/                   # SvelteKit app (prerendered from Supabase at build time)
 ```
 
 ## Database (Supabase)
 
-**Source of truth:** live Postgres in Supabase. Schema changes are SQL files under `supabase/migrations/`; the repo is linked to the live project via `supabase/config.toml`.
+**Source of truth:** `supabase/migrations/` (the baseline migration reconstructs the originally hand-made tables, so a fresh project can be built from the repo). Catalog rows live in `supabase/seed.sql`. As of 2026-10-20 the previously linked project (`htuflimuceuwjldkupnx`) no longer resolves and `supabase link` was never run in this checkout — see `docs/REQUIREMENTS.md` §2.
 
 **Common Supabase CLI ops** (run from repo root):
 
@@ -115,7 +169,7 @@ supabase db push                              # apply pending migrations to the 
 supabase gen types typescript --linked        # regenerate DB types (wire into web/ once stable)
 ```
 
-**Important:** the directory-query semantics below describe how a client *should* read the schema. **No client code currently implements them** — the `web/` app is still the SvelteKit demo template. Treat this section as a spec for the rebuild.
+The directory-query semantics below are implemented in `web/src/lib/data/shape.ts` (fed by `supabase.server.ts`); keep the two in sync.
 
 **Core tables**
 
@@ -125,7 +179,8 @@ supabase gen types typescript --linked        # regenerate DB types (wire into w
 | `plans`          | Tiers; **`provider_id`** FK; filter **`is_active`** in app                                      |
 | `models`         | Catalog model; **`slug`** stable id (e.g. for display/joins)                                    |
 | `plan_models`    | M–N plan ↔ model; optional **`usage_limit`** (text)                                             |
-| `benchmark_runs` | Time series per `(plan_id, model_id)` — `tps`, `ttft_s`, `aggressively_quantized`, `run_at`     |
+| `benchmark_runs` | Time series per `(plan_id, model_id)` — `tps`, `ttft_s`, `tps_p10`, `ttft_p90_s`, `error_rate`, `samples`, `aggressively_quantized`, `run_at` |
+| `audit_results`  | One row per `(plan, model, test, run)` — `status` pass/fail/inconclusive/error, headline `metric` + reference/target values, `p_value`/`q_value` (BH), `summary`, `details` jsonb. View `latest_audit_results` = newest per test. |
 
 **Plan slugs** are **not** globally unique across providers (e.g. multiple `lite` / `pro`). Prefer **prefixed** slugs (`xiaomi-lite`, …) when inserting data to keep URLs unambiguous. Routes use **`providers.slug`** and **`plans.slug`** as stored in the DB.
 
