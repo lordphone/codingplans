@@ -40,3 +40,8 @@ Thumbs.db
 
 # IDE (keep team-shared .vscode settings if you use them)
 .idea/
+
+# Benchmark artifacts (local-only; CI uploads them as workflow artifacts)
+benchmarks/fidelity/*/runs/*
+!benchmarks/fidelity/*/runs/.gitkeep
+benchmarks/audit/reports/

@@ -224,7 +224,13 @@ def run_benchmark(job: BenchmarkJob) -> dict[str, Any]:
     thinking_streamed = bool(reasoning_out)
 
     out_tokens = usage_output if usage_output is not None else _rough_output_tokens(text_out)
-    gen_s = max(t_last_content - t_first_content, 1e-9)
+    # usage.completion_tokens includes reasoning tokens, so when reasoning was
+    # streamed the generation window must span reasoning + content; timing
+    # only the content window would inflate TPS for thinking models.
+    gen_start = t_first_content
+    if usage_output is not None and t_first_reasoning is not None:
+        gen_start = min(t_first_reasoning, t_first_content)
+    gen_s = max(t_last_content - gen_start, 1e-9)
     total_s = time.perf_counter() - request_started
     tps = out_tokens / gen_s
     ttft_s = t_first_content - request_started
