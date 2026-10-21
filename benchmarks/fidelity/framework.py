@@ -28,14 +28,16 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import random
 import re
+import sys
 import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from client import ChatRequest, ChatResponse, StealthChatClient
 from targets import ENDPOINTS, Endpoint, get_endpoint
@@ -67,6 +69,9 @@ __all__ = [
     "parse_int_list",
     "rank1_mass",
     "read_run_result",
+    "resolve_runs_dir",
+    "run_panel",
+    "standard_cli",
     "renyi2_entropy",
     "safe_label",
     "shannon_entropy",
@@ -333,7 +338,7 @@ class PromptItem:
     (e.g. expected answer for arithmetic items)."""
 
     name: str
-    messages: tuple[dict[str, str], ...]
+    messages: tuple[dict[str, Any], ...]
     meta: dict | None = None
 
 
@@ -393,6 +398,11 @@ class PromptOutcome:
     failed (HTTP errors, timeouts, empty completions). `meta` carries the
     per-prompt metadata copied from the panel so comparison logic doesn't
     need to re-import the panel module.
+
+    `records` is optional structured per-sample data, index-aligned with
+    `completions`, for tests whose signal is not the text itself (tool-call
+    validity, usage counts, reasoning length). Older artifacts simply have
+    an empty list.
     """
 
     prompt_idx: int
@@ -400,6 +410,7 @@ class PromptOutcome:
     meta: dict | None
     completions: list[str] = field(default_factory=list)
     errors: list[dict] = field(default_factory=list)
+    records: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -486,8 +497,178 @@ def assert_comparable(
 
 
 # ---------------------------------------------------------------------------
+# Generic panel runner
+# ---------------------------------------------------------------------------
+
+
+def run_panel(
+    endpoint: Endpoint,
+    *,
+    test_name: str,
+    panel_id: str,
+    panel: Sequence[PromptItem],
+    n_samples: int,
+    max_tokens: int,
+    schedule_seed: int | None,
+    sleep_range: tuple[float, float],
+    build_request: Callable[[PromptItem, int], ChatRequest],
+    record: Callable[[PromptItem, ChatResponse], dict],
+    allow_empty: bool = False,
+    progress: bool = True,
+) -> tuple[RunResult, list[dict]]:
+    """Shared single-endpoint loop for tests that follow the standard shape.
+
+    Issues `len(panel) × n_samples` sequential calls in a shuffled order
+    through one `StealthChatClient`. For every successful call it appends
+    the visible text to `completions` and `record(item, resp)` to `records`
+    (so the comparator can work from structured fields), and logs a JSONL
+    row with the same record plus timing. Errors are recorded per prompt and
+    never abort the run.
+
+    `build_request(item, sample_idx)` lets a test vary the request per
+    sample (e.g. a fresh nonce) — anything that varies must NOT be part of
+    the panel hash, so it stays a stealth knob rather than a measurement
+    parameter.
+    """
+    if schedule_seed is None:
+        import secrets
+        schedule_seed = secrets.randbits(31)
+    panel = list(panel)
+    schedule = make_schedule(len(panel), n_samples, seed=schedule_seed)
+    outcomes = [
+        PromptOutcome(prompt_idx=i, name=item.name, meta=dict(item.meta or {}))
+        for i, item in enumerate(panel)
+    ]
+    raw_rows: list[dict] = []
+    total = len(schedule)
+
+    with StealthChatClient(min_sleep_s=sleep_range[0], max_sleep_s=sleep_range[1]) as client:
+        for i, call in enumerate(schedule, start=1):
+            item = panel[call.prompt_idx]
+            base = {
+                "i": i,
+                "prompt_idx": call.prompt_idx,
+                "prompt_name": item.name,
+                "sample_idx": call.sample_idx,
+            }
+            try:
+                resp = client.chat(
+                    endpoint, build_request(item, call.sample_idx), allow_empty=allow_empty
+                )
+                rec = record(item, resp)
+            except Exception as e:  # noqa: BLE001 — record and keep going
+                err = {**base, "error": f"{type(e).__name__}: {e}"}
+                outcomes[call.prompt_idx].errors.append(err)
+                raw_rows.append(err)
+                if progress:
+                    print(f"[{i}/{total}] {item.name:<26} ERROR {err['error'][:120]}",
+                          file=sys.stderr, flush=True)
+                if i < total:
+                    client.pause()
+                continue
+
+            outcomes[call.prompt_idx].completions.append(resp.content)
+            outcomes[call.prompt_idx].records.append(rec)
+            raw_rows.append({
+                **base,
+                "latency_s": round(resp.latency_s, 4),
+                "ttft_s": round(resp.ttft_s, 4) if resp.ttft_s is not None else None,
+                "finish_reason": resp.finish_reason,
+                "served_model": resp.served_model,
+                "content": resp.content[:400],
+                **rec,
+            })
+            if progress:
+                summary = " ".join(f"{k}={v}" for k, v in rec.items()
+                                   if isinstance(v, (bool, int, float)))[:120]
+                print(f"[{i}/{total}] {item.name:<26} {summary}", file=sys.stderr, flush=True)
+            if i < total:
+                client.pause()
+
+    result = RunResult(
+        schema_version=SCHEMA_VERSION,
+        test_name=test_name,
+        panel_id=panel_id,
+        panel_size=len(panel),
+        prompt_hash=panel_hash(panel),
+        n_samples=n_samples,
+        max_tokens=max_tokens,
+        schedule_seed=schedule_seed,
+        sleep_range_s=[float(sleep_range[0]), float(sleep_range[1])],
+        stamp_utc=utc_stamp(),
+        endpoint_label=endpoint.label,
+        endpoint_model=endpoint.model,
+        endpoint_base_url=endpoint.base_url.rstrip("/"),
+        endpoint_extra_params=dict(endpoint.extra_params),
+        user_agent=client.session_user_agent,
+        prompts=outcomes,
+    )
+    return result, raw_rows
+
+
+def standard_cli(
+    *,
+    description: str,
+    test_name: str,
+    panel: Sequence[PromptItem],
+    run: Callable[..., tuple[RunResult, list[dict]]],
+    runs_dir: Path,
+    default_n: int,
+    default_max_tokens: int,
+    default_sleep: tuple[float, float],
+) -> int:
+    """The `--endpoint <slug>` CLI every newer test exposes, in one place.
+
+    `run(endpoint, panel=…, n_samples=…, max_tokens=…, schedule_seed=…,
+    sleep_range=…)` must follow the standard runner signature."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--endpoint", required=True, help="Endpoint slug from targets.ENDPOINTS")
+    parser.add_argument("--n", type=int, default=default_n,
+                        help=f"Samples per prompt (default {default_n})")
+    parser.add_argument("--panel-size", type=int, default=len(panel),
+                        help="Truncate panel for cheap dry runs")
+    parser.add_argument("--max-tokens", type=int, default=default_max_tokens)
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Schedule shuffle seed (default: random per run)")
+    parser.add_argument("--sleep-min", type=float, default=default_sleep[0])
+    parser.add_argument("--sleep-max", type=float, default=default_sleep[1])
+    parser.add_argument("--runs-dir", type=Path, default=runs_dir,
+                        help="Where to write artifacts (default: the family's runs/)")
+    args = parser.parse_args()
+
+    load_dotenv()
+    endpoint = get_endpoint(args.endpoint)
+    sub = list(panel[: args.panel_size])
+    print(f"running {test_name} on {endpoint.label}: panel={len(sub)} n={args.n} "
+          f"=> {len(sub) * args.n} sequential calls", file=sys.stderr)
+    result, raw_rows = run(
+        endpoint,
+        panel=sub,
+        n_samples=args.n,
+        max_tokens=args.max_tokens,
+        schedule_seed=args.seed,
+        sleep_range=(args.sleep_min, args.sleep_max),
+    )
+    summary_path, jsonl_path = write_run_artifacts(result, raw_rows, runs_dir=args.runs_dir)
+    print(f"wrote {summary_path}", file=sys.stderr)
+    print(f"wrote {jsonl_path}", file=sys.stderr)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Artifact I/O
 # ---------------------------------------------------------------------------
+
+
+def resolve_runs_dir(runs_dir: Path) -> Path:
+    """`<family>/runs`, or `$CODINGPLANS_RUNS_ROOT/<family>` when that env var
+    is set (keeps self-tests and scratch audits out of the real runs/)."""
+    root = os.environ.get("CODINGPLANS_RUNS_ROOT")
+    if root:
+        return Path(root) / Path(runs_dir).parent.name
+    return Path(runs_dir)
 
 
 def write_run_artifacts(
@@ -502,8 +683,18 @@ def write_run_artifacts(
     Each test family chooses its own `runs_dir` (typically a sibling of the
     test scripts) so artifacts stay scoped to the family that produced them.
     """
+    runs_dir = resolve_runs_dir(runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
-    base = runs_dir / f"{result.stamp_utc}_{safe_label(result.endpoint_label)}_{result.test_name}"
+    stamp = result.stamp_utc
+    base = runs_dir / f"{stamp}_{safe_label(result.endpoint_label)}_{result.test_name}"
+    # Two runs of the same endpoint+test finishing in the same second (fast
+    # dry runs, calibration) must not overwrite each other: bump the stamp.
+    bump = 0
+    while Path(f"{base}.summary.json").exists():
+        bump += 1
+        stamp = f"{result.stamp_utc[:-1]}{bump:02d}Z"
+        base = runs_dir / f"{stamp}_{safe_label(result.endpoint_label)}_{result.test_name}"
+    result.stamp_utc = stamp
     summary_path = Path(f"{base}.summary.json")
     jsonl_path = Path(f"{base}.jsonl")
 

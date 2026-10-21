@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -45,6 +45,10 @@ __all__ = [
 # fidelity traffic blends in with the existing TPS traffic. We pick one
 # profile per StealthChatClient instance — i.e. one profile per audit run —
 # because real IDE sessions don't change their User-Agent mid-session.
+
+# Sent instead of a rotated profile to endpoints flagged `honest_user_agent`
+# (plans whose terms treat a modified User-Agent as a violation).
+HONEST_USER_AGENT = "codingplans-audit/1.0 (+https://github.com/lordphone/codingplans)"
 
 _CLIENT_PROFILES: tuple[dict[str, str], ...] = (
     {
@@ -77,22 +81,60 @@ class ChatRequest:
     first, then per-call `extra_params` wins on conflict.
     """
 
-    messages: tuple[dict[str, str], ...]
+    messages: tuple[dict[str, Any], ...]
     temperature: float
     max_tokens: int
     extra_params: dict[str, Any] | None = None
+    # OpenAI-format tool definitions; omitted from the body when None.
+    tools: tuple[dict[str, Any], ...] | None = None
+    # True/False merges the endpoint's thinking_on/thinking_off params;
+    # None leaves the endpoint's default behavior alone.
+    thinking: bool | None = None
 
 
 @dataclass
 class ChatResponse:
     """Result of one streamed completion. `content` is the concatenated
-    visible answer; reasoning/thinking deltas are dropped on purpose so the
-    fidelity benchmarks compare only the user-visible text."""
+    visible answer; reasoning/thinking deltas are kept apart in `reasoning`
+    so the text-comparison tests only ever see the user-visible answer.
+
+    The trailing fields default to empty so older call sites that build a
+    ChatResponse by hand (tests, fixtures) keep working."""
 
     content: str
     completion_tokens: int | None
     finish_reason: str | None
     latency_s: float
+    reasoning: str = ""
+    prompt_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    cached_tokens: int | None = None
+    # Assembled tool calls: [{"id", "name", "arguments"}] with `arguments`
+    # the raw (possibly malformed) JSON string exactly as streamed.
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    ttft_s: float | None = None
+    response_id: str | None = None
+    served_model: str | None = None
+
+
+def _delta_reasoning(delta: dict[str, Any]) -> str | None:
+    """Return the reasoning/thinking piece of an SSE delta, if any.
+    Vendors disagree on the field name (`reasoning_content` for DeepSeek /
+    Qwen / GLM / Kimi, `reasoning` for OpenRouter-style gateways)."""
+    for key in ("reasoning_content", "reasoning"):
+        r = delta.get(key)
+        if isinstance(r, str) and r:
+            return r
+    return None
+
+
+def _usage_int(usage: dict[str, Any], *path: str) -> int | None:
+    cur: Any = usage
+    for key in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur if isinstance(cur, int) else None
 
 
 def _delta_content(delta: dict[str, Any]) -> str | None:
@@ -173,10 +215,13 @@ class StealthChatClient:
             return
         time.sleep(self._rng.uniform(self._min_sleep, self._max_sleep))
 
-    def chat(self, endpoint, request: ChatRequest) -> ChatResponse:
+    def chat(self, endpoint, request: ChatRequest, *, allow_empty: bool = False) -> ChatResponse:
         """Issue one streamed chat completion against `endpoint`.
 
         Raises on transport errors, non-2xx responses, or empty completions.
+        `allow_empty=True` returns instead of raising when the stream carried
+        no visible content — tests that measure truncation (a reasoning model
+        that spends all of max_tokens thinking) need to record that outcome.
         Callers (test drivers) wrap this in try/except so one bad
         call doesn't kill a whole panel.
         """
@@ -195,19 +240,36 @@ class StealthChatClient:
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+        if request.tools:
+            body["tools"] = [dict(t) for t in request.tools]
         if endpoint.extra_params:
             body.update(endpoint.extra_params)
+        if request.thinking is True and getattr(endpoint, "thinking_on", None):
+            body.update(endpoint.thinking_on)
+        elif request.thinking is False and getattr(endpoint, "thinking_off", None):
+            body.update(endpoint.thinking_off)
         if request.extra_params:
             body.update(request.extra_params)
 
         headers = dict(self._headers)
+        if getattr(endpoint, "honest_user_agent", False):
+            headers = {"User-Agent": HONEST_USER_AGENT}
         headers["Authorization"] = f"Bearer {api_key}"
         headers["Content-Type"] = "application/json"
 
         chunks: list[str] = []
+        reasoning_chunks: list[str] = []
         completion_tokens: int | None = None
+        prompt_tokens: int | None = None
+        reasoning_tokens: int | None = None
+        cached_tokens: int | None = None
+        response_id: str | None = None
+        served_model: str | None = None
+        tool_parts: dict[int, dict[str, Any]] = {}
         finish_reason: str | None = None
+        first_token_at: float | None = None
         first_content_at: float | None = None
+        last_any_at: float | None = None
         last_content_at: float | None = None
         started = time.perf_counter()
 
@@ -239,11 +301,27 @@ class StealthChatClient:
                 except json.JSONDecodeError:
                     continue
 
+                if response_id is None and isinstance(chunk.get("id"), str):
+                    response_id = chunk["id"]
+                if served_model is None and isinstance(chunk.get("model"), str):
+                    served_model = chunk["model"]
+
                 usage = chunk.get("usage")
                 if isinstance(usage, dict):
                     ct = usage.get("completion_tokens")
                     if isinstance(ct, int):
                         completion_tokens = ct
+                    pt = usage.get("prompt_tokens")
+                    if isinstance(pt, int):
+                        prompt_tokens = pt
+                    rt = _usage_int(usage, "completion_tokens_details", "reasoning_tokens")
+                    if rt is not None:
+                        reasoning_tokens = rt
+                    cached = _usage_int(usage, "prompt_tokens_details", "cached_tokens")
+                    if cached is None:
+                        cached = _usage_int(usage, "cached_tokens")
+                    if cached is not None:
+                        cached_tokens = cached
 
                 choices = chunk.get("choices") or []
                 if not choices:
@@ -257,23 +335,61 @@ class StealthChatClient:
                 delta = choice0.get("delta") or {}
                 if not isinstance(delta, dict):
                     continue
+                now = time.perf_counter()
+
+                r_piece = _delta_reasoning(delta)
+                if r_piece is not None:
+                    if first_token_at is None:
+                        first_token_at = now
+                    reasoning_chunks.append(r_piece)
+                    last_any_at = now
+
+                for tc in delta.get("tool_calls") or []:
+                    if not isinstance(tc, dict):
+                        continue
+                    idx = tc.get("index", 0) if isinstance(tc.get("index"), int) else 0
+                    part = tool_parts.setdefault(idx, {"id": None, "name": "", "arguments": ""})
+                    if isinstance(tc.get("id"), str) and tc["id"]:
+                        part["id"] = tc["id"]
+                    fn = tc.get("function") or {}
+                    if isinstance(fn, dict):
+                        if isinstance(fn.get("name"), str):
+                            part["name"] += fn["name"]
+                        if isinstance(fn.get("arguments"), str):
+                            part["arguments"] += fn["arguments"]
+                    if first_token_at is None:
+                        first_token_at = now
+                    last_content_at = now
+
                 piece = _delta_content(delta)
                 if piece is None:
                     continue
-                now = time.perf_counter()
+                if first_token_at is None:
+                    first_token_at = now
                 if first_content_at is None:
                     first_content_at = now
                 last_content_at = now
                 chunks.append(piece)
 
-        if first_content_at is None or last_content_at is None:
-            raise RuntimeError(
-                f"No streamed content from {endpoint.label} (model={endpoint.model})"
-            )
+        tool_calls = [tool_parts[i] for i in sorted(tool_parts)]
+        if last_content_at is None or (first_content_at is None and not tool_calls):
+            if not allow_empty:
+                raise RuntimeError(
+                    f"No streamed content from {endpoint.label} (model={endpoint.model})"
+                )
+            last_content_at = last_any_at if last_any_at is not None else time.perf_counter()
 
         return ChatResponse(
             content="".join(chunks),
             completion_tokens=completion_tokens,
             finish_reason=finish_reason,
             latency_s=last_content_at - started,
+            reasoning="".join(reasoning_chunks),
+            prompt_tokens=prompt_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_tokens=cached_tokens,
+            tool_calls=tool_calls,
+            ttft_s=(first_token_at - started) if first_token_at is not None else None,
+            response_id=response_id,
+            served_model=served_model,
         )

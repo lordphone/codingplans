@@ -115,6 +115,9 @@ def run_entropy(
                 messages=item.messages,
                 temperature=1.0,
                 max_tokens=max_tokens,
+                # Answer-only panels: a reasoning model would spend the tiny
+                # max_tokens budget thinking. No-op where thinking can't be disabled.
+                thinking=False,
                 extra_params={"top_p": 1.0},
             )
             try:

@@ -31,6 +31,8 @@ _HERE = Path(__file__).resolve().parent  # benchmarks/fidelity/
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "model_identity"))
 sys.path.insert(0, str(_HERE / "long_context"))
+for _family in ("agentic", "integrity", "reasoning", "coding"):
+    sys.path.insert(0, str(_HERE / _family))
 
 from framework import read_run_result  # noqa: E402
 
@@ -53,6 +55,26 @@ from test_needle_aggregation import (  # noqa: E402
     compare_needle_aggregation,
 )
 
+# agentic/, integrity/, reasoning/, coding/
+from test_tool_calls import TEST_NAME as TOOL_CALLS, compare_tool_calls  # noqa: E402
+from test_token_accounting import (  # noqa: E402
+    TEST_NAME as TOKEN_ACCOUNTING,
+    compare_token_accounting,
+)
+from test_param_compliance import (  # noqa: E402
+    TEST_NAME as PARAM_COMPLIANCE,
+    compare_param_compliance,
+)
+from test_response_cache import (  # noqa: E402
+    TEST_NAME as RESPONSE_CACHE,
+    compare_response_cache,
+)
+from test_reasoning_budget import (  # noqa: E402
+    TEST_NAME as REASONING_BUDGET,
+    compare_reasoning_budget,
+)
+from test_code_exec import TEST_NAME as CODE_EXEC, compare_code_exec  # noqa: E402
+
 _DISPATCH = {
     ARITHMETIC: compare_arithmetic,
     ENTROPY: compare_entropy,
@@ -60,7 +82,16 @@ _DISPATCH = {
     NEEDLE_SINGLE: compare_single_needle,
     NEEDLE_MULTI: compare_needle_multi,
     NEEDLE_AGGREGATION: compare_needle_aggregation,
+    TOOL_CALLS: compare_tool_calls,
+    TOKEN_ACCOUNTING: compare_token_accounting,
+    PARAM_COMPLIANCE: compare_param_compliance,
+    RESPONSE_CACHE: compare_response_cache,
+    REASONING_BUDGET: compare_reasoning_budget,
+    CODE_EXEC: compare_code_exec,
 }
+
+# Public for benchmarks/audit/: test_name -> comparator.
+COMPARATORS = _DISPATCH
 
 
 def main() -> int:

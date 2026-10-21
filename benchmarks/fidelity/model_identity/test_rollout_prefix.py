@@ -114,6 +114,9 @@ def run_rollout_prefix(
                 messages=item.messages,
                 temperature=0.0,
                 max_tokens=max_tokens,
+                # Answer-only panels: a reasoning model would spend the tiny
+                # max_tokens budget thinking. No-op where thinking can't be disabled.
+                thinking=False,
             )
             try:
                 resp = client.chat(endpoint, req)
