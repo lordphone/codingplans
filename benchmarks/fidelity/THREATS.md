@@ -8,6 +8,14 @@ Which test catches which audit-bait behavior, and what's still TODO.
 | Model swap | `rollout_prefix` — byte-level output fingerprint, strongest signal for family-level swap | `arithmetic` — smaller models fail differently on large multiplications |
 | KV cache quantization | `multi_needle` — selective middle-depth forgetting is the KV cache signature | `aggregation` — missed values scattered across context |
 | Context truncation | `aggregation` — undercounts are unambiguous and length-correlated | `single_needle` grid — hard cliff shape confirms truncation threshold |
+| Broken / degraded tool calling (chat-template bugs, quantization, constrained-decoding shortcuts) | `tool_calls` — schema accuracy + trigger similarity vs official (Kimi Vendor Verifier method) | `code_exec` |
+| Hidden system-prompt injection | `token_accounting` — constant `prompt_tokens` surplus (intercept) for byte-identical requests | — |
+| Usage / quota inflation, different tokenizer (= different model) | `token_accounting` — slope > 1, completion tokens per char | `rollout_prefix` |
+| Silently ignored `max_tokens` / `stop` / JSON mode / temperature; clamped output cap | `param_compliance` | `entropy` (temperature) |
+| Answer caching (exact or semantic) | `response_cache` — duplicate rate at T=1, stale nonce echo | — |
+| Reasoning budget cut / thinking disabled | `reasoning_budget` — reasoning length ratio, thinking presence, accuracy | `code_exec` |
+| General coding-quality regression | `code_exec` — hidden unit-test pass rate on fresh tasks | `tool_calls` |
+| Peak-hour throttling | `audit/run_performance.py` 4×/day (TPS p10, TTFT p90, error rate by hour) | — |
 
 ## Status
 
@@ -21,6 +29,18 @@ Implemented under `long_context/`:
 - `needle_multi` — `long_context/test_needle_multi.py` (K needles per prompt)
 - `needle_aggregation` — `long_context/test_needle_aggregation.py` (M scattered values, sum)
 - `needle` — `long_context/needle.py` (filler generator + insertion + grid helpers)
+
+Implemented under `agentic/`, `integrity/`, `reasoning/`, `coding/` (2026-10):
+- `tool_calls` — `agentic/test_tool_calls.py`
+- `token_accounting`, `param_compliance`, `response_cache` — `integrity/`
+- `reasoning_budget` — `reasoning/test_reasoning_budget.py`
+- `code_exec` — `coding/test_code_exec.py` (sandboxed execution, see `coding/sandbox.py`)
+
+`benchmarks/audit/run_audit.py` runs any tier of these per audit group and
+applies Benjamini–Hochberg across each plan's tests (closes the
+"multi-test correction" gap below); `--calibrate` runs official vs official.
+`benchmarks/selftest.py --e2e` proves each new test fails a simulated cheater
+and passes an honest endpoint.
 
 No empty placeholder families — every directory under `fidelity/` has at least one runnable test.
 
@@ -36,10 +56,17 @@ this suite does not yet implement:
   shifts at ~1000× lower query budget. The entropy test in particular
   is severely sample-starved without logprobs and should auto-promote
   when they are available.
-- **Multi-test correction**: running six tests daily without
-  Bonferroni / Benjamini–Hochberg correction will produce spurious
-  alerts; the harness that aggregates results across tests should
-  apply FWER control.
+- ~~**Multi-test correction**~~ — done: BH in `audit/run_audit.py`.
+- **Knowledge-boundary fingerprint (KBF)**: binomial test on questions
+  just past each model's knowledge cutoff; reported to catch 155/155
+  substitutions in ~100–700 probes (arXiv 2605.29524). Best next test for
+  model swaps that survive `rollout_prefix` (forced-thinking models).
+- **Prompt-cache honesty**: cached_tokens reported vs TTFT actually saved.
+- **Quota audit**: does the advertised N-requests-per-5h hold before 429s.
+  Expensive and ToS-sensitive; see docs/research/cheating-vectors.md §2.7.
+- **Anthropic-compatible path**: plans are mostly consumed via
+  `/anthropic` endpoints by Claude Code; translation-layer bugs there are
+  invisible to the OpenAI-path tests (research §2.16).
 - **Time-series drift detection**: CUSUM / EWMA on test statistics
   for daily monitoring (vs the current point-in-time fail flag).
 - **vLLM batch-invariant anchor**: mirror a subset of tests against a
