@@ -42,9 +42,20 @@ def status_of(verdicts: list[dict[str, Any]]) -> str:
     return "match"
 
 
+HEADROOM = 1.25  # same headroom the lab applies to honest-variation effects
+
+
 async def run_audit(
-    cat: Catalog, audit: Audit, tier: str = "quick", *, save_runs: bool = True
+    cat: Catalog,
+    audit: Audit,
+    tier: str = "quick",
+    *,
+    calibrate: bool = False,
+    save_runs: bool = True,
 ) -> dict[str, Any]:
+    """Run one tier. With `calibrate`, the reference is sampled twice and the
+    reference-vs-reference effect (the in-situ noise floor of that API) widens
+    each probe's margin, at the cost of 50% more requests."""
     ref, tgt = cat.endpoint(audit.reference), cat.endpoint(audit.target)
     margins = lab_margins()
     verdicts: list[dict[str, Any]] = []
@@ -56,13 +67,21 @@ async def run_audit(
             verdicts.append({"probe": name, "skipped": reason})
             continue
         print(f"[{audit.target}] {name}", file=sys.stderr, flush=True)
-        r_ref, r_tgt = await collect(probe, [ref, tgt], meta={"audit": audit.plan, "tier": tier})
+        eps = [ref, ref, tgt] if calibrate else [ref, tgt]
+        labels = [ref.slug, f"{ref.slug}#twin", tgt.slug] if calibrate else None
+        runs = await collect(probe, eps, labels=labels, meta={"audit": audit.plan, "tier": tier})
+        r_ref, r_tgt = runs[0], runs[-1]
         if save_runs:
-            r_ref.save()
-            r_tgt.save()
+            for r in runs:
+                r.save()
         v = probe.compare(r_ref, r_tgt)
         if name in margins:
             v.margin = margins[name]
+        if calibrate:
+            twin = probe.compare(r_ref, runs[1])
+            v.detail["reference_twin_effect"] = twin.effect
+            if not twin.inconclusive:
+                v.margin = max(v.margin or 0.0, HEADROOM * abs(twin.effect))
         verdicts.append(
             v.to_dict()
             | {
@@ -88,6 +107,7 @@ async def run_audit(
         "target": tgt.public(),
         "reference": ref.public(),
         "tier": tier,
+        "calibrated": calibrate,
         "started_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "finished_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "alpha": ALPHA,

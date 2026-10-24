@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Status from '#lib/components/Status.svelte';
-	import { auditsForPlan, catalog, modelBySlug, planStatus, providerBySlug } from '#lib/data.ts';
+	import { auditsForPlan, catalog, modelBySlug, planStatus } from '#lib/data.ts';
 	import { site } from '#lib/site.ts';
 	import { resolve } from '$app/paths';
 

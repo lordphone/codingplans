@@ -101,7 +101,7 @@ def cmd_audit(a: argparse.Namespace) -> int:
             state = f"missing {', '.join(missing)}" if missing else "ready"
             print(f"{x.plan}: {x.target} vs {x.reference} [{state}] probes={list(tier)}")
             continue
-        result = asyncio.run(run_audit(cat, x, a.tier))
+        result = asyncio.run(run_audit(cat, x, a.tier, calibrate=a.calibrate))
         path = publish(result)
         print(f"{x.plan}/{x.target}: {result['status']} -> {path}")
     if not a.dry_run:
@@ -259,6 +259,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--target", action="append")
     s.add_argument("--all", action="store_true")
     s.add_argument("--tier", choices=list(probe_registry.TIERS), default="quick")
+    s.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="also sample the reference twice and widen margins by its self-difference",
+    )
     s.add_argument("--dry-run", action="store_true")
 
     s = sub.add_parser("collect", help="run one probe against one endpoint")

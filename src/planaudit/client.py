@@ -22,6 +22,10 @@ from .catalog import Endpoint
 
 DEFAULT_UA = f"planaudit/{__version__} (+https://github.com/lordphone/codingplans)"
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524, 529}
+# Request.seed sentinel: draw a fresh random seed for every send. Servers that
+# seed their sampler globally (vLLM does) otherwise replay the same random
+# stream on every run, which makes sampled outputs unrealistically repeatable.
+FRESH_SEED = -1
 
 
 @dataclass
@@ -46,7 +50,9 @@ class Request:
         }
         if self.top_p is not None:
             body["top_p"] = self.top_p
-        if self.seed is not None:
+        if self.seed == FRESH_SEED:
+            body["seed"] = random.getrandbits(31)
+        elif self.seed is not None:
             body["seed"] = self.seed
         if self.top_logprobs > 0:
             body["logprobs"] = True

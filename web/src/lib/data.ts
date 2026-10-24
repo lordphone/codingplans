@@ -167,4 +167,4 @@ export function planStatus(plan: string): AuditStatus | 'untested' {
 }
 
 /** Path of a data file as served by the site (see scripts/sync-data.mjs). */
-export const dataPath = (rel: string) => `/data/${rel}`;
+export const dataPath = (rel: string) => `data/${rel}`;

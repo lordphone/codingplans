@@ -96,7 +96,7 @@ class Probe(ABC):
         h = hashlib.sha256()
         h.update(f"{self.name}:{self.version}".encode())
         for it in self.items():
-            h.update(it.id.encode())
+            h.update(f"{it.id}:{it.sequential}".encode())
             for r in it.requests:
                 h.update(json.dumps(asdict(r), sort_keys=True).encode())
         return h.hexdigest()[:16]

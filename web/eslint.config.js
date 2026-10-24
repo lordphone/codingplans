@@ -14,6 +14,9 @@ export default ts.config(
 	{ languageOptions: { globals: { ...globals.browser, ...globals.node } } },
 	{
 		files: ['**/*.svelte', '**/*.svelte.ts'],
-		languageOptions: { parserOptions: { parser: ts.parser } }
+		languageOptions: { parserOptions: { parser: ts.parser } },
+		// Internal links are already type-checked through resolve(); external
+		// links (source repo, provider sites) are plain hrefs.
+		rules: { 'svelte/no-navigation-without-resolve': ['error', { ignoreLinks: true }] }
 	}
 );

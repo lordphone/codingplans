@@ -92,7 +92,10 @@ class LogprobProbe(Probe):
                 temperature=0.0,
                 top_logprobs=c["top_k"],
             )
-            out.append(Item(id=f"lp{i:04d}", requests=[req, req]))
+            # Sequential, so the two replicas land in different server batches and
+            # the within-endpoint term sees the same batch nondeterminism as the
+            # cross-endpoint one.
+            out.append(Item(id=f"lp{i:04d}", requests=[req, req], sequential=True))
         return out
 
     def _distances(self, ref: Run, tgt: Run, ids: list[str]) -> np.ndarray:

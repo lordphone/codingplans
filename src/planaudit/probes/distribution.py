@@ -17,7 +17,7 @@ import re
 import numpy as np
 
 from ..artifacts import Run
-from ..client import Request
+from ..client import FRESH_SEED, Request
 from . import panels
 from .base import Item, Probe, Verdict, ok_rows
 
@@ -112,6 +112,7 @@ class DistributionProbe(Probe):
                 messages=panels.user(prompt),
                 max_tokens=c["max_tokens"],
                 temperature=c["temperature"],
+                seed=FRESH_SEED,
             )
             out.append(Item(id=f"d{i:03d}", requests=[req] * c["samples"]))
         return out
