@@ -84,37 +84,31 @@ same ~200 prompts, and see whether we can tell them apart.
 
 ## 4. How this maps onto the repo
 
-**Already built**
+Rebuilt from scratch on 2026-10-24 (branch `rebuild`); see `README.md`.
 
 | Plan item | Where |
 |---|---|
-| Plan vs. official reference pairing | `benchmarks/endpoints.json` → `audits` groups |
-| Output fingerprints | `benchmarks/fidelity/model_identity/` |
-| Context cutoff | `benchmarks/fidelity/long_context/` (needle tests) |
-| Cache honesty | `integrity/test_response_cache.py`, `integrity/test_token_accounting.py` |
-| Coding accuracy | `benchmarks/fidelity/coding/` |
-| Tool calls, reasoning budget | `agentic/`, `reasoning/` |
-| False-alarm calibration (official vs. official) | `run_audit.py --calibrate` |
-| Multiple-testing correction | Benjamini–Hochberg in the orchestrator |
-| Related-work survey | `docs/research/cheating-vectors.md`, `docs/research/landscape.md` |
+| Plan vs. official reference pairing | `config/catalog.toml` → `[[audits]]` |
+| Contemporaneous paired sampling | `src/planaudit/runner.py` (one interleaved schedule) |
+| Logprob shift | `probes/logprob.py` |
+| Output distribution (text only) | `probes/distribution.py` |
+| Arithmetic / coding accuracy | `probes/accuracy.py`, `probes/code.py` (HumanEval, sandboxed) |
+| Context cutoff | `probes/accuracy.py` → `NeedleProbe` |
+| Cache honesty (timing vs. reported cached tokens) | `probes/service.py` → `CacheProbe` |
+| Hidden prompt / tokenizer swap | `probes/service.py` → `AccountingProbe` |
+| Multiple-testing correction, margins | `src/planaudit/audit.py` (BH, lab margins, `--calibrate`) |
+| **Calibration lab** (positive ground truth) | `config/lab.toml`, `src/planaudit/lab/` |
+| Gateway-level corner-cuts | `src/planaudit/lab/proxy.py` (adversary proxy) |
+| Detection power vs. budget, size sweep | `src/planaudit/lab/analysis.py` → `data/lab/*.json` |
 
-**Missing**
+**Still open**
 
-- **Positive ground truth.** `selftest.py` checks honest/cheating cases against
-  a fake API only. Nothing measures detection rate against a real model in a
-  known corner-cutting setup. That is the lab.
-- **Lab wiring.** Runners are single-endpoint, so each local vLLM setup can be
-  registered as an ordinary entry in `endpoints.json` (OpenAI-compatible base
-  URL). The 5090 must sit in a Linux/WSL2 box, not the Mac.
-- **Stronger detectors.** Cai et al. ("Are You Getting What You Pay For?",
-  2504.04715) found classifiers and MMD near chance for FP8/INT8 vs. full
-  precision on large models. A 7B BF16-vs-INT4 split should be easy, so the
-  first experiment mainly validates the pipeline. The publishable result is how
-  detection power falls with model size and milder quantization. RUT
-  (rank-based uniformity test, 2506.06975) is a candidate detector to add.
-- **Cache timing vs. ground truth.** No competitor covers caching honesty, and
-  `test_response_cache.py` exists; checking it against prefix-cache on/off in
-  the lab is cheap.
+- RUT (rank-based uniformity test) needs reference logits: possible in the
+  lab (we serve the reference), not against two black-box APIs.
+- Peak-hour / time-of-day analysis: completions carry `started_at`; no
+  scheduled audits yet.
+- Anthropic-compatible (`/anthropic`) endpoints are not exercised.
+- An 8×H100 check on a large open model in BF16 vs. FP8 vs. INT4.
 
 ## 5. Paper
 

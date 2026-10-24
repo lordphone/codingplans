@@ -1,0 +1,47 @@
+name: Audit plans
+
+# Manual only until the API keys exist and each plan's terms have been
+# reviewed (see README "Before you audit"). Add a schedule once ready, e.g.
+#   schedule: [{ cron: "17 3 * * *" }]
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: Plan slug from config/catalog.toml (empty = every audit with keys)
+        required: false
+      tier:
+        description: quick or standard
+        default: quick
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Run audit
+        env:
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          ZAI_CODING_PLAN_API_KEY: ${{ secrets.ZAI_CODING_PLAN_API_KEY }}
+          KIMI_CODE_API_KEY: ${{ secrets.KIMI_CODE_API_KEY }}
+          MINIMAX_M_PLAN_API_KEY: ${{ secrets.MINIMAX_M_PLAN_API_KEY }}
+          ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY: ${{ secrets.ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY }}
+          PLANAUDIT_SANDBOX: process
+        run: |
+          if [ -n "${{ inputs.plan }}" ]; then sel="--plan ${{ inputs.plan }}"; else sel="--all"; fi
+          uv run planaudit audit $sel --tier "${{ inputs.tier }}" --calibrate
+      - name: Commit results
+        run: |
+          git config user.name "planaudit-bot"
+          git config user.email "planaudit-bot@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "data: audit results $(date -u +%F)"
+          git push
