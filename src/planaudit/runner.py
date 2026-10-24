@@ -73,17 +73,30 @@ async def collect(
     t0 = time.monotonic()
     done = 0
     # Bound in-flight items too, so a long panel doesn't open thousands of tasks.
-    gate = asyncio.Semaphore(max(4, 4 * (limit or max(e.max_concurrency for e in endpoints))))
+    # Serial probes (timing-sensitive) hold one slot per endpoint for a whole
+    # item, so a cold/warm pair is never interleaved with another item's requests.
+    width = (
+        1
+        if probe.max_concurrency == 1
+        else max(4, 4 * (limit or max(e.max_concurrency for e in endpoints)))
+    )
+    gates = [asyncio.Semaphore(width) for _ in endpoints]
 
     async def one(k: int, it: Item) -> None:
         nonlocal done
-        async with gate:
+        async with gates[k]:
             rows = await _run_item(clients[k], it)
         dicts = []
         for c in rows:
             d = c.to_dict()
-            if c.ok and (s := await asyncio.to_thread(probe.score, it, c)) is not None:
-                d["score"] = s
+            if c.ok:
+                try:
+                    s = await asyncio.to_thread(probe.score, it, c)
+                except Exception as e:  # a grader bug must not lose the whole run
+                    s = None
+                    d["score_error"] = f"{type(e).__name__}: {e}"[:300]
+                if s is not None:
+                    d["score"] = s
             dicts.append(d)
         results[k][it.id] = dicts
         done += 1

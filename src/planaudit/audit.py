@@ -81,7 +81,7 @@ async def run_audit(
             twin = probe.compare(r_ref, runs[1])
             v.detail["reference_twin_effect"] = twin.effect
             if not twin.inconclusive:
-                v.margin = max(v.margin or 0.0, HEADROOM * abs(twin.effect))
+                v.margin = max(v.margin or 0.0, HEADROOM * max(0.0, twin.effect))
         verdicts.append(
             v.to_dict()
             | {

@@ -178,8 +178,10 @@ class AccountingProbe(Probe):
         d = np.array([b[i] - a[i] for i in common], dtype=float)
         x = np.array([ref.item_meta[i]["words"] for i in common], dtype=float)
         slope = float(np.polyfit(x, d, 1)[0]) if len(common) >= 3 else 0.0
+        # Mean, matching the sign-flip test: a surplus on only some requests
+        # still counts.
         return self.verdict(
-            float(np.median(d)),
+            float(np.mean(d)),
             stats.signflip_test(d, B=B, seed=seed),
             len(common),
             detail={"diff_min": float(d.min()), "diff_max": float(d.max()), "diff_slope": slope},

@@ -63,7 +63,8 @@ def _pair(args: tuple) -> dict[str, Any]:
     if full.inconclusive:
         return out
     ids = sorted(set(ref.items) & set(run.items))
-    per_item = max(1, len(next(iter(run.items.values()))))
+    # Cost of an audit at this budget: requests to BOTH endpoints.
+    per_item = 2 * max(1, len(next(iter(run.items.values()))))
     g = np.random.default_rng(0)
     for n in _budgets(len(ids)):
         draws = 1 if n == len(ids) else subsamples
@@ -71,8 +72,9 @@ def _pair(args: tuple) -> dict[str, Any]:
         for s in range(draws):
             sub = list(g.choice(ids, size=n, replace=False))
             v = probe.compare(ref, run, sub, B=B, seed=s)
-            if not v.inconclusive:
-                pts.append((v.effect, v.p_value))
+            # An inconclusive draw is a miss, not a draw to ignore; otherwise
+            # small budgets look more powerful than they are.
+            pts.append((float("nan"), 1.0) if v.inconclusive else (v.effect, v.p_value))
         out["curve"].append({"items": n, "requests": n * per_item, "draws": pts})
     return out
 
@@ -80,7 +82,7 @@ def _pair(args: tuple) -> dict[str, Any]:
 def _rate(draws: list[tuple[float, float]], margin: float | None) -> float | None:
     if not draws:
         return None
-    hits = [p < ALPHA and (margin is None or e > margin) for e, p in draws]
+    hits = [p < ALPHA and e == e and (margin is None or e > margin) for e, p in draws]
     return float(np.mean(hits))
 
 
@@ -111,7 +113,9 @@ def analyze_family(
 
     def margin(probe: str, exclude: str | None = None) -> float | None:
         floor = probe_registry.PROBES[probe].default_margin
-        hs = [abs(e) for (v, p), e in honest.items() if p == probe and v != exclude]
+        # One-sided, like the flag rule: an honest variant that is *better* than
+        # the reference (negative effect) must not widen the margin.
+        hs = [max(0.0, e) for (v, p), e in honest.items() if p == probe and v != exclude]
         if not hs:
             return floor
         m = HEADROOM * max(hs)
@@ -127,14 +131,18 @@ def analyze_family(
                 "requests": c["requests"],
                 "rate": _rate(c["draws"], m),
                 "rate_significance_only": _rate(c["draws"], None),
-                "median_effect": float(np.median([e for e, _ in c["draws"]]))
-                if c["draws"]
+                "median_effect": float(np.nanmedian([e for e, _ in c["draws"]]))
+                if any(e == e for e, _ in c["draws"])
                 else None,
+                "draws": len(c["draws"]),
             }
             for c in r["curve"]
         ]
         flagged = not r["inconclusive"] and r["p_value"] < ALPHA and (m is None or r["effect"] > m)
-        min_req = next((c["requests"] for c in curve if (c["rate"] or 0) >= 0.95), None)
+        # Only subsampled budgets count: the full panel is a single draw.
+        min_req = next(
+            (c["requests"] for c in curve if c["draws"] > 1 and (c["rate"] or 0) >= 0.95), None
+        )
         results.append(
             {k: r[k] for k in r if k != "curve"}
             | {"margin": m, "flagged": flagged, "curve": curve, "requests_for_95": min_req}

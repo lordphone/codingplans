@@ -214,7 +214,7 @@
 					{:else}
 						<LineChart
 							{series}
-							xLabel="Requests"
+							xLabel="Requests to both endpoints"
 							yLabel={variant.kind === 'cut' ? 'Detection rate' : 'False-alarm rate'}
 							threshold={variant.kind === 'cut' ? { y: 0.95, label: '95%' } : undefined}
 						/>

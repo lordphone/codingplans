@@ -44,7 +44,10 @@ TEMPLATES = [
 def _dist(pos: list[Any]) -> dict[str, float]:
     """Top-k alternatives at one position as a probability dict."""
     alts = pos[2] or [[pos[0], pos[1]]]
-    return {tok: math.exp(lp) for tok, lp in alts}
+    out: dict[str, float] = {}
+    for tok, lp in alts:  # distinct ids can decode to the same string: sum them
+        out[tok] = out.get(tok, 0.0) + math.exp(lp)
+    return out
 
 
 def tv_logprobs(a: Completion, b: Completion) -> float | None:

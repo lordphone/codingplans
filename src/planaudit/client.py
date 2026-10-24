@@ -115,9 +115,10 @@ def _parse_logprobs(choice: dict[str, Any]) -> list[list[Any]]:
     out = []
     for t in lp.get("content") or []:
         top = [
-            [a.get("token", ""), float(a.get("logprob", 0.0))] for a in t.get("top_logprobs") or []
+            [a.get("token", ""), float(a.get("logprob") or -1e9)]
+            for a in t.get("top_logprobs") or []
         ]
-        out.append([t.get("token", ""), float(t.get("logprob", 0.0)), top])
+        out.append([t.get("token", ""), float(t.get("logprob") or -1e9), top])
     return out
 
 
@@ -180,8 +181,9 @@ class ChatClient:
                 await self._pace()
                 result, retry_after = await self._once(body)
                 result.attempts = attempt
+                # Status 200 + error = the stream broke after headers: transient.
                 retryable = result.error is not None and (
-                    result.status is None or result.status in RETRY_STATUS
+                    result.status in (None, 200) or result.status in RETRY_STATUS
                 )
                 if not retryable or attempt > self.max_retries:
                     return result
@@ -212,6 +214,8 @@ class ChatClient:
                         chunk = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    if not isinstance(chunk, dict):
+                        continue
                     c.chunks += 1
                     if err := chunk.get("error"):
                         c.error = f"stream error: {str(err)[:300]}"
@@ -238,7 +242,7 @@ class ChatClient:
                         logprobs += _parse_logprobs(choice)
                         if fr := choice.get("finish_reason"):
                             c.finish_reason = fr
-        except httpx.HTTPError as e:
+        except Exception as e:  # malformed provider output is data, not a crash
             c.error = f"{type(e).__name__}: {e}"[:300]
         c.latency_s = time.perf_counter() - t0
         c.text = "".join(text)

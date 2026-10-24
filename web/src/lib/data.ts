@@ -73,6 +73,7 @@ export type CurvePoint = {
 	rate: number | null;
 	rate_significance_only: number | null;
 	median_effect: number | null;
+	draws: number;
 };
 export type LabResult = {
 	variant: string;

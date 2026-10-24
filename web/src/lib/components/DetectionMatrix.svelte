@@ -123,7 +123,7 @@
 					colspan={probes.length + 1}
 					class="border-t border-line bg-sunken/60 px-4 py-1.5 text-xs font-medium text-ink-2"
 				>
-					Corner-cuts: requests needed to detect it 95% of the time
+					Corner-cuts: requests (to both endpoints) needed to detect it 95% of the time
 				</td>
 			</tr>
 			{#each cutRows as v (v.id)}
