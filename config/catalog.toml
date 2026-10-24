@@ -1,0 +1,323 @@
+# Single source of truth for what the project audits.
+#
+#   providers  -> who sells the plan / runs the API
+#   models     -> the model being compared (catalog slug, not the API id)
+#   plans      -> flat-rate subscriptions, the things under audit
+#   endpoints  -> OpenAI-compatible chat endpoints: one `official` reference per
+#                 model, one `plan` endpoint per plan that serves it
+#   audits     -> which plan endpoint is compared against which reference
+#
+# Prices and limits are a research snapshot (docs/research/landscape.md,
+# 2026-10-20). Endpoint URLs and model ids come from vendor docs and are
+# `verified = false` until `planaudit preflight` has called them.
+#
+# Any endpoint's base_url / model can be overridden at runtime with
+# PLANAUDIT_<SLUG>_BASE_URL / PLANAUDIT_<SLUG>_MODEL (slug upper-cased,
+# '-' and '.' -> '_').
+
+snapshot = "2026-10-20"
+
+# ---------------------------------------------------------------- providers
+
+[[providers]]
+slug = "zai"
+name = "Z.ai"
+maker_of = "GLM"
+url = "https://z.ai/subscribe"
+
+[[providers]]
+slug = "moonshot"
+name = "Moonshot AI"
+maker_of = "Kimi"
+url = "https://www.kimi.com/code"
+
+[[providers]]
+slug = "minimax"
+name = "MiniMax"
+maker_of = "MiniMax-M"
+url = "https://platform.minimax.io"
+
+[[providers]]
+slug = "alibaba"
+name = "Alibaba Cloud Model Studio"
+maker_of = "Qwen"
+url = "https://www.alibabacloud.com/help/en/model-studio/coding-plan"
+
+# ------------------------------------------------------------------- models
+
+[[models]]
+slug = "glm-5.3"
+name = "GLM-5.3"
+maker = "zai"
+open_weights = true
+
+[[models]]
+slug = "glm-5"
+name = "GLM-5"
+maker = "zai"
+open_weights = true
+
+[[models]]
+slug = "kimi-k3"
+name = "Kimi K3"
+maker = "moonshot"
+open_weights = true
+notes = "Thinking cannot be disabled; temperature is fixed."
+
+[[models]]
+slug = "kimi-k2.5"
+name = "Kimi K2.5"
+maker = "moonshot"
+open_weights = true
+
+[[models]]
+slug = "minimax-m3.1-flash"
+name = "MiniMax-M3.1-Flash"
+maker = "minimax"
+open_weights = false
+notes = "Thinking cannot be disabled; temperature is ignored."
+
+[[models]]
+slug = "minimax-m2.5"
+name = "MiniMax-M2.5"
+maker = "minimax"
+open_weights = true
+notes = "Retiring 2026-11-18."
+
+[[models]]
+slug = "qwen3.6-plus"
+name = "Qwen3.6-Plus"
+maker = "alibaba"
+open_weights = false
+
+# -------------------------------------------------------------------- plans
+
+[[plans]]
+slug = "zai-glm-coding-lite"
+provider = "zai"
+name = "GLM Coding Lite"
+price = 18
+currency = "USD"
+limits = "2,000 credits / 5h · 10,000 / week; off-peak usage billed at 50%"
+models = ["glm-5.3"]
+tos_risk = "high"
+tos_note = "Use is limited to officially supported tools; SDK use may be restricted."
+
+[[plans]]
+slug = "zai-glm-coding-pro"
+provider = "zai"
+name = "GLM Coding Pro"
+price = 80
+currency = "USD"
+limits = "12,000 credits / 5h · 60,000 / week"
+models = ["glm-5.3"]
+tos_risk = "high"
+tos_note = "Use is limited to officially supported tools; SDK use may be restricted."
+
+[[plans]]
+slug = "kimi-code-pro"
+provider = "moonshot"
+name = "Kimi Code Pro"
+price = 199
+currency = "CNY"
+limits = "5-hour rolling window + monthly quota (numbers not published)"
+models = ["kimi-k3"]
+tos_risk = "medium"
+tos_note = "Changing the client User-Agent is treated as a violation; the audit sends its own UA."
+
+[[plans]]
+slug = "minimax-m-plan-explore"
+provider = "minimax"
+name = "M Plan Explore"
+price = 55
+currency = "USD"
+limits = "3× Go tier; 5-hour and weekly windows (numbers not published)"
+models = ["minimax-m3.1-flash"]
+tos_risk = "unknown"
+tos_note = "No explicit automation ban found."
+
+[[plans]]
+slug = "alibaba-coding-pro"
+provider = "alibaba"
+name = "Coding Plan Pro"
+price = 50
+currency = "USD"
+limits = "6,000 requests / 5h · 45,000 / week · 90,000 / month"
+models = ["glm-5", "kimi-k2.5", "minimax-m2.5", "qwen3.6-plus"]
+tos_risk = "high"
+tos_note = "Terms forbid using the plan key for automated scripts or other non-interactive use."
+
+# ---------------------------------------------------------------- endpoints
+
+[[endpoints]]
+slug = "glm53-official"
+role = "official"
+provider = "zai"
+model = "glm-5.3"
+api_model = "glm-5.3"
+base_url = "https://api.z.ai/api/paas/v4"
+api_key_env = "ZAI_API_KEY"
+thinking_off = { thinking = { type = "disabled" } }
+
+[[endpoints]]
+slug = "glm53-zai-coding"
+role = "plan"
+provider = "zai"
+model = "glm-5.3"
+api_model = "glm-5.3"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+api_key_env = "ZAI_CODING_PLAN_API_KEY"
+thinking_off = { thinking = { type = "disabled" } }
+
+[[endpoints]]
+slug = "glm5-official"
+role = "official"
+provider = "zai"
+model = "glm-5"
+api_model = "glm-5"
+base_url = "https://api.z.ai/api/paas/v4"
+api_key_env = "ZAI_API_KEY"
+thinking_off = { thinking = { type = "disabled" } }
+
+[[endpoints]]
+slug = "glm5-alibaba"
+role = "plan"
+provider = "alibaba"
+model = "glm-5"
+api_model = "glm-5"
+base_url = "https://coding-intl.dashscope.aliyuncs.com/v1"
+api_key_env = "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY"
+thinking_off = { enable_thinking = false }
+
+[[endpoints]]
+slug = "kimi-k3-official"
+role = "official"
+provider = "moonshot"
+model = "kimi-k3"
+api_model = "kimi-k3"
+base_url = "https://api.moonshot.ai/v1"
+api_key_env = "MOONSHOT_API_KEY"
+logprobs = true
+
+[[endpoints]]
+slug = "kimi-k3-kimi-code"
+role = "plan"
+provider = "moonshot"
+model = "kimi-k3"
+api_model = "k3"
+base_url = "https://api.kimi.ai/coding/v1"
+api_key_env = "KIMI_CODE_API_KEY"
+
+[[endpoints]]
+slug = "kimi-k2.5-official"
+role = "official"
+provider = "moonshot"
+model = "kimi-k2.5"
+api_model = "kimi-k2.5"
+base_url = "https://api.moonshot.ai/v1"
+api_key_env = "MOONSHOT_API_KEY"
+logprobs = true
+thinking_off = { thinking = { type = "disabled" } }
+
+[[endpoints]]
+slug = "kimi-k2.5-alibaba"
+role = "plan"
+provider = "alibaba"
+model = "kimi-k2.5"
+api_model = "kimi-k2.5"
+base_url = "https://coding-intl.dashscope.aliyuncs.com/v1"
+api_key_env = "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY"
+thinking_off = { enable_thinking = false }
+
+[[endpoints]]
+slug = "minimax-m31-official"
+role = "official"
+provider = "minimax"
+model = "minimax-m3.1-flash"
+api_model = "MiniMax-M3.1-Flash"
+base_url = "https://api.minimax.io/v1"
+api_key_env = "MINIMAX_API_KEY"
+
+[[endpoints]]
+slug = "minimax-m31-mplan"
+role = "plan"
+provider = "minimax"
+model = "minimax-m3.1-flash"
+api_model = "MiniMax-M3.1-Flash"
+base_url = "https://api.minimax.io/v1"
+api_key_env = "MINIMAX_M_PLAN_API_KEY"
+
+[[endpoints]]
+slug = "minimax-m2.5-official"
+role = "official"
+provider = "minimax"
+model = "minimax-m2.5"
+api_model = "MiniMax-M2.5"
+base_url = "https://api.minimax.io/v1"
+api_key_env = "MINIMAX_API_KEY"
+
+[[endpoints]]
+slug = "minimax-m2.5-alibaba"
+role = "plan"
+provider = "alibaba"
+model = "minimax-m2.5"
+api_model = "MiniMax-M2.5"
+base_url = "https://coding-intl.dashscope.aliyuncs.com/v1"
+api_key_env = "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY"
+
+[[endpoints]]
+slug = "qwen36-plus-official"
+role = "official"
+provider = "alibaba"
+model = "qwen3.6-plus"
+api_model = "qwen3.6-plus"
+base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+api_key_env = "DASHSCOPE_API_KEY"
+thinking_off = { enable_thinking = false }
+
+[[endpoints]]
+slug = "qwen36-plus-alibaba"
+role = "plan"
+provider = "alibaba"
+model = "qwen3.6-plus"
+api_model = "qwen3.6-plus"
+base_url = "https://coding-intl.dashscope.aliyuncs.com/v1"
+api_key_env = "ALIBABA_CLOUD_MODEL_STUDIO_CODING_PLAN_API_KEY"
+thinking_off = { enable_thinking = false }
+
+# ------------------------------------------------------------------- audits
+
+[[audits]]
+plan = "zai-glm-coding-lite"
+target = "glm53-zai-coding"
+reference = "glm53-official"
+
+[[audits]]
+plan = "kimi-code-pro"
+target = "kimi-k3-kimi-code"
+reference = "kimi-k3-official"
+
+[[audits]]
+plan = "minimax-m-plan-explore"
+target = "minimax-m31-mplan"
+reference = "minimax-m31-official"
+
+[[audits]]
+plan = "alibaba-coding-pro"
+target = "glm5-alibaba"
+reference = "glm5-official"
+
+[[audits]]
+plan = "alibaba-coding-pro"
+target = "kimi-k2.5-alibaba"
+reference = "kimi-k2.5-official"
+
+[[audits]]
+plan = "alibaba-coding-pro"
+target = "minimax-m2.5-alibaba"
+reference = "minimax-m2.5-official"
+
+[[audits]]
+plan = "alibaba-coding-pro"
+target = "qwen36-plus-alibaba"
+reference = "qwen36-plus-official"
