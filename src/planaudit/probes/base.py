@@ -75,6 +75,11 @@ class Probe(ABC):
     requires_thinking_off: ClassVar[bool] = False
     # Timing-sensitive probes run with less concurrency than the endpoint allows.
     max_concurrency: ClassVar[int | None] = None
+    # Probes whose prompts must be new to the server on every run (e.g. so a
+    # cache probe's "cold" request is really cold) put RUN_NONCE in their
+    # messages; the runner replaces it with a fresh value per run. The panel
+    # hash is computed on the placeholder, so runs stay comparable.
+    RUN_NONCE: ClassVar[str] = "{{run_nonce}}"
 
     def __init__(self, **cfg: Any):
         unknown = set(cfg) - set(self.defaults)

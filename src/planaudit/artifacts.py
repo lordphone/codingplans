@@ -45,7 +45,12 @@ class Run:
     schema: int = SCHEMA
 
     def completions(self, item_id: str) -> list[Completion]:
-        return [Completion.from_dict(d) for d in self.items.get(item_id, [])]
+        # Parsed lazily and memoised (not a dataclass field, so never saved):
+        # the lab compares the same runs thousands of times.
+        cache = self.__dict__.setdefault("_parsed", {})
+        if item_id not in cache:
+            cache[item_id] = [Completion.from_dict(d) for d in self.items.get(item_id, [])]
+        return cache[item_id]
 
     def all_completions(self) -> list[Completion]:
         return [Completion.from_dict(d) for rows in self.items.values() for d in rows]

@@ -22,8 +22,8 @@ from .base import Item, Probe, Verdict, ok_rows
 class CacheProbe(Probe):
     """Is prompt caching real, and is what the usage block reports true?
 
-    Each item is a fresh long prefix (a nonce up front keeps it out of any
-    existing cache) sent twice in a row with different questions. A real
+    Each item is a fresh long prefix (a per-run nonce up front keeps it out of
+    any existing cache) sent twice in a row with different questions. A real
     prefix cache makes the second request's time-to-first-token much shorter.
     Per endpoint we get the median speedup and the share of prompt tokens the
     API *claims* were cached; comparing the two exposes "phantom" caching
@@ -44,8 +44,9 @@ class CacheProbe(Probe):
         out = []
         for i in range(c["n_items"]):
             r = panels.rng(c["seed"], "cache", i)
-            nonce = f"{r.getrandbits(64):016x}"
-            doc = f"Document {nonce}.\n" + panels.filler(r, int(c["prefix_tokens"] / 1.33))
+            doc = f"Document {self.RUN_NONCE}-{i}.\n" + panels.filler(
+                r, int(c["prefix_tokens"] / 1.33)
+            )
             reqs = [
                 Request(
                     messages=panels.user(f"{doc}\n\nQuestion: {q} Answer in one word."),

@@ -97,14 +97,20 @@ class LogprobProbe(Probe):
 
     def _distances(self, ref: Run, tgt: Run, ids: list[str]) -> np.ndarray:
         """(n_items, 6) pairwise TV matrix; NaN rows where data is missing."""
+        memo = self.__dict__.setdefault("_memo", {})
         D = np.full((len(ids), 6), np.nan)
         for row, i in enumerate(ids):
-            cs = ok_rows(ref, i)[:2] + ok_rows(tgt, i)[:2]
-            if len(cs) != 4 or len(ok_rows(ref, i)) < 2:
-                continue
-            ds = [tv_logprobs(cs[a], cs[b]) for a, b in _PAIRS]
-            if all(d is not None for d in ds):
-                D[row] = ds
+            key = (id(ref), id(tgt), i)
+            if key not in memo:
+                a, b = ok_rows(ref, i)[:2], ok_rows(tgt, i)[:2]
+                ds = None
+                if len(a) == 2 and len(b) == 2:
+                    cs = a + b
+                    ds = [tv_logprobs(cs[x], cs[y]) for x, y in _PAIRS]
+                    ds = ds if all(d is not None for d in ds) else None
+                memo[key] = ds
+            if memo[key] is not None:
+                D[row] = memo[key]
         return D[~np.isnan(D).any(axis=1)]
 
     def _compare(self, ref: Run, tgt: Run, ids: list[str], *, B: int, seed: int) -> Verdict:

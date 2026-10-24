@@ -11,14 +11,29 @@ from __future__ import annotations
 
 import asyncio
 import random
+import secrets
 import sys
 import time
+from dataclasses import replace
 from typing import Any
 
 from .artifacts import Run, utc_now
 from .catalog import Endpoint
-from .client import ChatClient, Completion
+from .client import ChatClient, Completion, Request
 from .probes.base import Item, Probe
+
+
+def _with_nonce(item: Item, nonce: str) -> Item:
+    def sub(r: Request) -> Request:
+        msgs = [
+            {**m, "content": m["content"].replace(Probe.RUN_NONCE, nonce)}
+            if isinstance(m.get("content"), str)
+            else m
+            for m in r.messages
+        ]
+        return replace(r, messages=msgs)
+
+    return replace(item, requests=[sub(r) for r in item.requests])
 
 
 async def _run_item(client: ChatClient, item: Item) -> list[Completion]:
@@ -51,7 +66,8 @@ async def collect(
         ChatClient(e, max_concurrency=limit, min_interval_s=min_interval_s) for e in endpoints
     ]
     results: list[dict[str, list[dict[str, Any]]]] = [{} for _ in endpoints]
-    schedule = [(k, it) for k in range(len(endpoints)) for it in items]
+    nonces = [secrets.token_hex(8) for _ in endpoints]
+    schedule = [(k, _with_nonce(it, nonces[k])) for k in range(len(endpoints)) for it in items]
     random.Random(seed).shuffle(schedule)
     started = utc_now()
     t0 = time.monotonic()

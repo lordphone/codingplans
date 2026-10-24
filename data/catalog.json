@@ -1,0 +1,281 @@
+{
+ "snapshot": "2026-10-20",
+ "providers": [
+  {
+   "slug": "zai",
+   "name": "Z.ai",
+   "maker_of": "GLM",
+   "url": "https://z.ai/subscribe"
+  },
+  {
+   "slug": "moonshot",
+   "name": "Moonshot AI",
+   "maker_of": "Kimi",
+   "url": "https://www.kimi.com/code"
+  },
+  {
+   "slug": "minimax",
+   "name": "MiniMax",
+   "maker_of": "MiniMax-M",
+   "url": "https://platform.minimax.io"
+  },
+  {
+   "slug": "alibaba",
+   "name": "Alibaba Cloud Model Studio",
+   "maker_of": "Qwen",
+   "url": "https://www.alibabacloud.com/help/en/model-studio/coding-plan"
+  }
+ ],
+ "models": [
+  {
+   "slug": "glm-5.3",
+   "name": "GLM-5.3",
+   "maker": "zai",
+   "open_weights": true
+  },
+  {
+   "slug": "glm-5",
+   "name": "GLM-5",
+   "maker": "zai",
+   "open_weights": true
+  },
+  {
+   "slug": "kimi-k3",
+   "name": "Kimi K3",
+   "maker": "moonshot",
+   "open_weights": true,
+   "notes": "Thinking cannot be disabled; temperature is fixed."
+  },
+  {
+   "slug": "kimi-k2.5",
+   "name": "Kimi K2.5",
+   "maker": "moonshot",
+   "open_weights": true
+  },
+  {
+   "slug": "minimax-m3.1-flash",
+   "name": "MiniMax-M3.1-Flash",
+   "maker": "minimax",
+   "open_weights": false,
+   "notes": "Thinking cannot be disabled; temperature is ignored."
+  },
+  {
+   "slug": "minimax-m2.5",
+   "name": "MiniMax-M2.5",
+   "maker": "minimax",
+   "open_weights": true,
+   "notes": "Retiring 2026-11-18."
+  },
+  {
+   "slug": "qwen3.6-plus",
+   "name": "Qwen3.6-Plus",
+   "maker": "alibaba",
+   "open_weights": false
+  }
+ ],
+ "plans": [
+  {
+   "slug": "zai-glm-coding-lite",
+   "provider": "zai",
+   "name": "GLM Coding Lite",
+   "price": 18,
+   "currency": "USD",
+   "limits": "2,000 credits / 5h · 10,000 / week; off-peak usage billed at 50%",
+   "models": [
+    "glm-5.3"
+   ],
+   "tos_risk": "high",
+   "tos_note": "Use is limited to officially supported tools; SDK use may be restricted."
+  },
+  {
+   "slug": "zai-glm-coding-pro",
+   "provider": "zai",
+   "name": "GLM Coding Pro",
+   "price": 80,
+   "currency": "USD",
+   "limits": "12,000 credits / 5h · 60,000 / week",
+   "models": [
+    "glm-5.3"
+   ],
+   "tos_risk": "high",
+   "tos_note": "Use is limited to officially supported tools; SDK use may be restricted."
+  },
+  {
+   "slug": "kimi-code-pro",
+   "provider": "moonshot",
+   "name": "Kimi Code Pro",
+   "price": 199,
+   "currency": "CNY",
+   "limits": "5-hour rolling window + monthly quota (numbers not published)",
+   "models": [
+    "kimi-k3"
+   ],
+   "tos_risk": "medium",
+   "tos_note": "Changing the client User-Agent is treated as a violation; the audit sends its own UA."
+  },
+  {
+   "slug": "minimax-m-plan-explore",
+   "provider": "minimax",
+   "name": "M Plan Explore",
+   "price": 55,
+   "currency": "USD",
+   "limits": "3× Go tier; 5-hour and weekly windows (numbers not published)",
+   "models": [
+    "minimax-m3.1-flash"
+   ],
+   "tos_risk": "unknown",
+   "tos_note": "No explicit automation ban found."
+  },
+  {
+   "slug": "alibaba-coding-pro",
+   "provider": "alibaba",
+   "name": "Coding Plan Pro",
+   "price": 50,
+   "currency": "USD",
+   "limits": "6,000 requests / 5h · 45,000 / week · 90,000 / month",
+   "models": [
+    "glm-5",
+    "kimi-k2.5",
+    "minimax-m2.5",
+    "qwen3.6-plus"
+   ],
+   "tos_risk": "high",
+   "tos_note": "Terms forbid using the plan key for automated scripts or other non-interactive use."
+  }
+ ],
+ "audits": [
+  {
+   "plan": "zai-glm-coding-lite",
+   "target": {
+    "slug": "glm53-zai-coding",
+    "role": "plan",
+    "provider": "zai",
+    "model": "glm-5.3",
+    "api_model": "glm-5.3",
+    "base_url": "https://api.z.ai/api/coding/paas/v4"
+   },
+   "reference": {
+    "slug": "glm53-official",
+    "role": "official",
+    "provider": "zai",
+    "model": "glm-5.3",
+    "api_model": "glm-5.3",
+    "base_url": "https://api.z.ai/api/paas/v4"
+   }
+  },
+  {
+   "plan": "kimi-code-pro",
+   "target": {
+    "slug": "kimi-k3-kimi-code",
+    "role": "plan",
+    "provider": "moonshot",
+    "model": "kimi-k3",
+    "api_model": "k3",
+    "base_url": "https://api.kimi.ai/coding/v1"
+   },
+   "reference": {
+    "slug": "kimi-k3-official",
+    "role": "official",
+    "provider": "moonshot",
+    "model": "kimi-k3",
+    "api_model": "kimi-k3",
+    "base_url": "https://api.moonshot.ai/v1"
+   }
+  },
+  {
+   "plan": "minimax-m-plan-explore",
+   "target": {
+    "slug": "minimax-m31-mplan",
+    "role": "plan",
+    "provider": "minimax",
+    "model": "minimax-m3.1-flash",
+    "api_model": "MiniMax-M3.1-Flash",
+    "base_url": "https://api.minimax.io/v1"
+   },
+   "reference": {
+    "slug": "minimax-m31-official",
+    "role": "official",
+    "provider": "minimax",
+    "model": "minimax-m3.1-flash",
+    "api_model": "MiniMax-M3.1-Flash",
+    "base_url": "https://api.minimax.io/v1"
+   }
+  },
+  {
+   "plan": "alibaba-coding-pro",
+   "target": {
+    "slug": "glm5-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "glm-5",
+    "api_model": "glm-5",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
+   },
+   "reference": {
+    "slug": "glm5-official",
+    "role": "official",
+    "provider": "zai",
+    "model": "glm-5",
+    "api_model": "glm-5",
+    "base_url": "https://api.z.ai/api/paas/v4"
+   }
+  },
+  {
+   "plan": "alibaba-coding-pro",
+   "target": {
+    "slug": "kimi-k2.5-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "kimi-k2.5",
+    "api_model": "kimi-k2.5",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
+   },
+   "reference": {
+    "slug": "kimi-k2.5-official",
+    "role": "official",
+    "provider": "moonshot",
+    "model": "kimi-k2.5",
+    "api_model": "kimi-k2.5",
+    "base_url": "https://api.moonshot.ai/v1"
+   }
+  },
+  {
+   "plan": "alibaba-coding-pro",
+   "target": {
+    "slug": "minimax-m2.5-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "minimax-m2.5",
+    "api_model": "MiniMax-M2.5",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
+   },
+   "reference": {
+    "slug": "minimax-m2.5-official",
+    "role": "official",
+    "provider": "minimax",
+    "model": "minimax-m2.5",
+    "api_model": "MiniMax-M2.5",
+    "base_url": "https://api.minimax.io/v1"
+   }
+  },
+  {
+   "plan": "alibaba-coding-pro",
+   "target": {
+    "slug": "qwen36-plus-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "qwen3.6-plus",
+    "api_model": "qwen3.6-plus",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
+   },
+   "reference": {
+    "slug": "qwen36-plus-official",
+    "role": "official",
+    "provider": "alibaba",
+    "model": "qwen3.6-plus",
+    "api_model": "qwen3.6-plus",
+    "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+   }
+  }
+ ]
+}
