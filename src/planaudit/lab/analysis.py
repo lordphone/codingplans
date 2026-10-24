@@ -96,8 +96,11 @@ def analyze_family(
             if load_run(fam.id, fam.reference, name) and load_run(fam.id, v.id, name):
                 jobs.append((fam.id, fam.reference, v.id, name, cfg, subsamples, B))
     print(f"[{fam.id}] analysing {len(jobs)} variant×probe pairs", file=sys.stderr, flush=True)
-    with ProcessPoolExecutor(workers) as pool:
-        pairs = list(pool.map(_pair, jobs))
+    if workers <= 1:
+        pairs = [_pair(j) for j in jobs]
+    else:
+        with ProcessPoolExecutor(workers) as pool:
+            pairs = list(pool.map(_pair, jobs))
 
     kind = {v.id: v for v in fam.variants}
     honest = {
