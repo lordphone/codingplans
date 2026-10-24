@@ -12,6 +12,7 @@
 	const rows = $derived(auditsForPlan(plan.slug));
 	const history = $derived(audits.filter((a) => a.plan === plan.slug));
 
+	const riskLabel = { high: 'High', medium: 'Medium', low: 'Low', unknown: 'Unknown' } as const;
 	const fmtP = (p?: number) => (p == null ? '—' : p < 0.001 ? '< 0.001' : p.toFixed(3));
 </script>
 
@@ -50,7 +51,7 @@
 		<div class="bg-surface p-5">
 			<dt class="text-xs text-muted">Terms of service and automated testing</dt>
 			<dd class="mt-1 text-sm">
-				<span class="font-medium capitalize">{plan.tos_risk} risk.</span>
+				<span class="font-medium">{riskLabel[plan.tos_risk]} risk.</span>
 				{plan.tos_note}
 			</dd>
 		</div>

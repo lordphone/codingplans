@@ -215,6 +215,31 @@ def cmd_lab(a: argparse.Namespace) -> int:
         done = analyze(lab, a.family or None, subsamples=a.subsamples, workers=a.workers)
         print("wrote " + ", ".join(f"data/lab/{f}.json" for f in done))
         return 0
+    if a.lab_cmd == "report":
+        from .paths import DATA
+
+        doc = json.loads((DATA / "lab" / f"{a.family_id}.json").read_text())
+        names = list(doc["probes"])
+        print(f"{doc['name']}  (vLLM {doc['engine']['vllm']}, {doc['engine']['gpu']})")
+        print("requests for 95% detection; '!' = false alarm, 'x' = flagged, '.' = not flagged\n")
+        print(f"{'variant':16}" + "".join(f"{n[:11]:>12}" for n in names))
+        by = {(r["variant"], r["probe"]): r for r in doc["results"]}
+        for v in doc["variants"]:
+            if v["id"] == doc["reference"]:
+                continue
+            cells = []
+            for n in names:
+                r = by.get((v["id"], n))
+                if r is None or r["inconclusive"]:
+                    cells.append("-")
+                elif v["kind"] == "honest":
+                    cells.append("!" if r["flagged"] else ".")
+                elif r["requests_for_95"]:
+                    cells.append(str(r["requests_for_95"]))
+                else:
+                    cells.append("x" if r["flagged"] else ".")
+            print(f"{v['id']:16}" + "".join(f"{c:>12}" for c in cells))
+        return 0
     if a.lab_cmd == "serve":
         import time
 
@@ -294,6 +319,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--family", action="append")
     s.add_argument("--subsamples", type=int, default=100)
     s.add_argument("--workers", type=int, default=8)
+    s = ls.add_parser("report", help="print a family's analysis as a table")
+    s.add_argument("family_id")
     s = ls.add_parser("serve")
     s.add_argument("family_id")
     s.add_argument("variant_id")

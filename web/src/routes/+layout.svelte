@@ -25,8 +25,11 @@
 
 <div class="flex min-h-dvh flex-col">
 	<header class="sticky top-0 z-40 border-b border-line bg-page/85 backdrop-blur-md">
-		<div class="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6">
-			<a href={resolve('/')} class="flex items-center gap-2.5 font-semibold tracking-tight">
+		<div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
+			<a
+				href={resolve('/')}
+				class="flex shrink-0 items-center gap-2 font-semibold tracking-tight whitespace-nowrap sm:gap-2.5"
+			>
 				<svg viewBox="0 0 32 32" class="size-6" aria-hidden="true">
 					<rect width="32" height="32" rx="7" class="fill-ink" />
 					<path
@@ -45,11 +48,11 @@
 					<a
 						href={resolve(item.href)}
 						aria-current={active(item.href) ? 'page' : undefined}
-						class="rounded-md px-2 py-1.5 text-sm text-ink-2 transition-colors hover:bg-sunken hover:text-ink aria-[current=page]:font-medium aria-[current=page]:text-ink sm:px-3"
+						class="rounded-md px-1.5 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-sunken hover:text-ink aria-[current=page]:font-medium aria-[current=page]:text-ink sm:px-3 sm:text-sm"
 						>{item.label}</a
 					>
 				{/each}
-				<span class="mx-1 h-5 w-px bg-line"></span>
+				<span class="mx-0.5 h-5 w-px bg-line sm:mx-1"></span>
 				<ThemeToggle />
 			</nav>
 		</div>
