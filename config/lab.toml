@@ -118,17 +118,33 @@ args = []
 id = "kv-fp8"
 kind = "cut"
 cut = "kv-cache"
-label = "FP8 KV cache"
+label = "FP8 KV cache, no scales (broken output)"
 model = "Qwen/Qwen2.5-7B-Instruct"
 args = ["--dtype", "bfloat16", "--kv-cache-dtype", "fp8"]
 
 [[families.variants]]
-id = "kv-int4"
+id = "kv-int8"
 kind = "cut"
 cut = "kv-cache"
-label = "INT4 KV cache"
+label = "INT8 KV cache (per-token-head scales)"
 model = "Qwen/Qwen2.5-7B-Instruct"
-args = ["--dtype", "bfloat16", "--kv-cache-dtype", "int4_per_token_head"]
+args = ["--dtype", "bfloat16", "--kv-cache-dtype", "int8_per_token_head"]
+
+[[families.variants]]
+id = "kv-tq-k8v4"
+kind = "cut"
+cut = "kv-cache"
+label = "TurboQuant KV cache (8-bit K, 4-bit V)"
+model = "Qwen/Qwen2.5-7B-Instruct"
+args = ["--dtype", "bfloat16", "--kv-cache-dtype", "turboquant_k8v4"]
+
+[[families.variants]]
+id = "kv-tq4"
+kind = "cut"
+cut = "kv-cache"
+label = "TurboQuant 4-bit KV cache"
+model = "Qwen/Qwen2.5-7B-Instruct"
+args = ["--dtype", "bfloat16", "--kv-cache-dtype", "turboquant_4bit_nc"]
 
 [[families.variants]]
 id = "swap-3b"

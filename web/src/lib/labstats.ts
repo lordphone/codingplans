@@ -53,3 +53,33 @@ export function fmtEffect(v: number, name: string) {
 		);
 	return v.toFixed(3);
 }
+
+/** Headline findings for a family, computed so they cannot drift from the data. */
+export function findings(f: LabFamily) {
+	const c = cuts(f);
+	const caught = (probes: string[] | null) =>
+		c.filter((v) =>
+			f.results.some(
+				(r) => r.variant === v.id && r.flagged && (probes == null || probes.includes(r.probe))
+			)
+		);
+	const textOnly = Object.keys(f.probes).filter((p) => p !== 'logprob');
+	const cheapest = c
+		.map((v) => {
+			const rs = f.results.filter((r) => r.variant === v.id && r.requests_for_95 != null);
+			rs.sort((a, b) => a.requests_for_95! - b.requests_for_95!);
+			return { variant: v, best: rs[0] };
+		})
+		.filter((x) => x.best);
+	const byLogprob = cheapest.filter((x) => x.best.probe === 'logprob').length;
+	return {
+		all: caught(null).length,
+		textOnly: caught(textOnly).length,
+		total: c.length,
+		missed: c.filter((v) => !caught(null).includes(v)).map((v) => v.label),
+		missedTextOnly: c.filter((v) => !caught(textOnly).includes(v)).map((v) => v.label),
+		logprobCheapest: byLogprob,
+		withBudget: cheapest.length,
+		hasLogprob: 'logprob' in f.probes
+	};
+}

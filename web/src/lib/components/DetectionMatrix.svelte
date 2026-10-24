@@ -165,7 +165,7 @@
 									>&gt;{fmtRequests(r.curve.at(-1)?.requests)}</span
 								>
 							{:else}
-								<span class="text-xs text-muted">not seen</span>
+								<span class="text-muted" aria-label="not flagged">·</span>
 							{/if}
 						</td>
 					{/each}
@@ -189,6 +189,6 @@
 		><span class="num rounded border border-accent/40 px-1">&gt;N</span> flagged on the full panel, below
 		95% on every subsample</span
 	>
-	<span><span class="text-muted">not seen</span>: within the margin or not significant</span>
+	<span><span class="text-muted">·</span> not flagged: within the margin or not significant</span>
 	<span>Hover a cell for effect, margin and p-value. Click a row for its power curves.</span>
 </div>

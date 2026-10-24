@@ -3,7 +3,7 @@
 	import LineChart, { type Series } from '#lib/components/LineChart.svelte';
 	import Status from '#lib/components/Status.svelte';
 	import { lab } from '#lib/data.ts';
-	import { fmtEffect, fmtRequests, result, summary } from '#lib/labstats.ts';
+	import { findings, fmtEffect, fmtRequests, result, summary } from '#lib/labstats.ts';
 	import { site } from '#lib/site.ts';
 	import { resolve } from '$app/paths';
 
@@ -29,6 +29,7 @@
 	});
 	const variant = $derived(family?.variants.find((v) => v.id === selected));
 	const s = $derived(family ? summary(family) : null);
+	const fx = $derived(family ? findings(family) : null);
 	let showTable = $state(false);
 
 	const series = $derived.by((): Series[] => {
@@ -131,6 +132,37 @@
 			</dl>
 		{/if}
 
+		{#if fx}
+			<section class="mt-10 rounded-lg border border-line bg-surface p-5">
+				<h2 class="font-semibold">What this model shows</h2>
+				<ul class="mt-3 space-y-2 text-sm text-ink-2">
+					<li>
+						<span class="num text-ink">{fx.all}/{fx.total}</span> corner-cuts are flagged by at
+						least one probe{#if fx.missed.length}; missed: {fx.missed.join(', ')}{/if}.
+					</li>
+					{#if fx.hasLogprob}
+						<li>
+							Where an API returns logprobs, the next-token probe is the cheapest detector for
+							<span class="num text-ink">{fx.logprobCheapest}</span> of the {fx.withBudget} cuts it can
+							reach 95% on.
+						</li>
+						<li>
+							Without logprobs (text only), <span class="num text-ink"
+								>{fx.textOnly}/{fx.total}</span
+							>
+							are still flagged{#if fx.missedTextOnly.length}; text alone misses {fx.missedTextOnly.join(
+									', '
+								)}{/if}.
+						</li>
+					{/if}
+					<li>
+						<span class="num text-ink">{s?.falseAlarms ?? 0}</span> false alarms in
+						<span class="num text-ink">{s?.honestChecks ?? 0}</span> checks of honest variations.
+					</li>
+				</ul>
+			</section>
+		{/if}
+
 		<h2 class="mt-14 text-xl font-semibold">Detection matrix</h2>
 		<p class="mt-1 mb-4 max-w-3xl text-sm text-ink-2">
 			Every setup against the {family.variants.find((v) => v.id === family.reference)?.label} with every
@@ -230,6 +262,7 @@
 					Larger models often lose less quality to quantization, so the same cut can be harder to
 					see. Requests needed for 95% detection of the same corner-cut, by model size. Flagship
 					plan models are 100× larger still; read these as lower bounds on the cost of an audit.
+					<span class="text-muted">·</span> = not flagged; &gt;N = flagged on the full panel only.
 				</p>
 				<div class="mt-4 grid gap-4 md:grid-cols-2">
 					{#each sweepCuts as cut (cut)}
@@ -252,12 +285,16 @@
 											<td class="px-4 py-2">{sweepFamilies[0].probes[p]?.title ?? p}</td>
 											{#each sweepFamilies as f (f.family)}
 												{@const r = result(f, cut, p)}
-												<td class="num px-4 py-2 text-right {r?.flagged ? '' : 'text-muted'}">
+												<td
+													class="num px-4 py-2 text-right whitespace-nowrap {r?.flagged
+														? ''
+														: 'text-muted'}"
+												>
 													{#if !r}—{:else if r.requests_for_95 != null}{fmtRequests(
 															r.requests_for_95
 														)}{:else if r.flagged}&gt;{fmtRequests(
 															r.curve.at(-1)?.requests
-														)}{:else}not seen{/if}
+														)}{:else}<span aria-label="not flagged">·</span>{/if}
 												</td>
 											{/each}
 										</tr>

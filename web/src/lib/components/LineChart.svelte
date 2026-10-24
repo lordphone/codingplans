@@ -150,8 +150,11 @@
 				class="stroke-ink-2"
 				stroke-opacity="0.45"
 			/>
-			<text x={m.left + 4} y={sy(threshold.y) - 5} class="fill-ink-2 text-[10px]"
-				>{threshold.label}</text
+			<text
+				x={m.left + innerW - 4}
+				y={sy(threshold.y) + 13}
+				text-anchor="end"
+				class="fill-ink-2 text-[10px]">{threshold.label}</text
 			>
 		{/if}
 
