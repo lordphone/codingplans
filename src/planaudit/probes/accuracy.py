@@ -43,7 +43,8 @@ class AccuracyProbe(Probe):
                 if np.isfinite(v):
                     groups.setdefault(str(run.item_meta[i][self.group_key]), []).append(v)
             out["by_" + self.group_key] = {
-                k: float(np.mean(v)) for k, v in sorted(groups.items(), key=lambda kv: float(kv[0]))
+                k: float(np.mean(v))
+                for k, v in sorted(groups.items(), key=lambda kv: _natural(kv[0]))
             }
         return out
 
@@ -62,6 +63,10 @@ class AccuracyProbe(Probe):
             reference=self.summarize(ref, ids),
             target=self.summarize(tgt, ids),
         )
+
+
+def _natural(key: str) -> tuple:
+    return tuple(int(t) if t.isdigit() else t for t in re.split(r"(\d+)", key))
 
 
 # ---------------------------------------------------------------- arithmetic
@@ -86,16 +91,18 @@ class ArithmeticProbe(AccuracyProbe):
     detects = "quantization, model swap"
     default_margin = 0.03
     group_key = "digits"
-    defaults = {"n_items": 240, "digits": [2, 3, 4, 5], "seed": 1}
+    # Operand sizes (digits of a, digits of b), cycled. Chosen so a 7B model
+    # lands near 50% overall: all-wrong or all-right items carry no signal.
+    defaults = {"n_items": 240, "digits": [[2, 2], [2, 3], [3, 3], [2, 4]], "seed": 1}
 
     def items(self) -> list[Item]:
         c = self.cfg
         out = []
         for i in range(c["n_items"]):
             r = panels.rng(c["seed"], "arith", i)
-            d = c["digits"][i % len(c["digits"])]
-            a = r.randint(10 ** (d - 1), 10**d - 1)
-            b = r.randint(10 ** (d - 1), 10**d - 1)
+            da, db = c["digits"][i % len(c["digits"])]
+            a = r.randint(10 ** (da - 1), 10**da - 1)
+            b = r.randint(10 ** (db - 1), 10**db - 1)
             req = Request(
                 messages=panels.user(
                     f"What is {a} × {b}? Reply with only the final number, no working."
@@ -103,7 +110,9 @@ class ArithmeticProbe(AccuracyProbe):
                 max_tokens=24,
                 temperature=0.0,
             )
-            out.append(Item(id=f"a{i:04d}", requests=[req], meta={"answer": a * b, "digits": d}))
+            out.append(
+                Item(id=f"a{i:04d}", requests=[req], meta={"answer": a * b, "digits": f"{da}x{db}"})
+            )
         return out
 
     def score(self, item: Item, completion: Completion) -> dict[str, Any]:

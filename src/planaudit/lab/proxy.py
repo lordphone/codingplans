@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -131,11 +132,16 @@ def make_app(upstream: str, cuts: Cuts) -> Starlette:
         r = await http.request(request.method, request.url.path)
         return Response(r.content, status_code=r.status_code, media_type="application/json")
 
+    @asynccontextmanager
+    async def lifespan(_app: Starlette):
+        yield
+        await http.aclose()
+
     return Starlette(
         routes=[
             Route("/v1/chat/completions", chat, methods=["POST"]),
             Route("/v1/models", passthrough),
             Route("/health", passthrough),
         ],
-        on_shutdown=[http.aclose],
+        lifespan=lifespan,
     )

@@ -50,7 +50,12 @@ class VllmServer:
         log.flush()
         self.proc = subprocess.Popen(
             cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-            env={**os.environ, "VLLM_NO_USAGE_STATS": "1", "DO_NOT_TRACK": "1"},
+            env={
+                **os.environ,
+                "PATH": f"{Path(self.lab.vllm).parent}:{os.environ.get('PATH', '')}",
+                "VLLM_NO_USAGE_STATS": "1",
+                "DO_NOT_TRACK": "1",
+            },
         )  # fmt: skip
         deadline = time.monotonic() + float(self.lab.engine["startup_timeout_s"])
         while time.monotonic() < deadline:
