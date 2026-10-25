@@ -10,6 +10,33 @@
 		return pr?.margin == null ? null : fmtEffect(pr.margin, pr.effect_name);
 	};
 
+	const faq = [
+		[
+			'Why aren’t Claude, ChatGPT or Copilot subscriptions listed?',
+			'Those subscriptions are only usable through their own apps and coding tools, not as a plain API endpoint, so the same requests cannot be sent to the plan and to the paid API side by side. Their models are also closed, so there is no independent copy of the weights to anchor a lab test.'
+		],
+		[
+			'Why not just run a public benchmark on each plan?',
+			'A benchmark score says how good a model is, not whether it is the model you paid for. Small precision cuts barely move benchmark scores while still changing outputs; comparing against the provider’s own API on identical requests isolates exactly the difference that matters.'
+		],
+		[
+			'Some plans show only a few applicable probes. Why?',
+			'Several 2026 models always reason before answering and ignore sampling settings. The accuracy and distribution probes need direct answers, so on those models only caching, token accounting and speed can run for now. A reasoning-aware variant of the quality probes is planned.'
+		],
+		[
+			'Can a provider game this?',
+			'A provider that recognises audit traffic could serve it the genuine model. Requests are paced like a person’s, panels are generated from seeds and can be rotated, and accounts are ordinary paid ones, but a black-box test is never proof against a determined adversary.'
+		],
+		[
+			'Why test on a 7B model when plans serve models 100× larger?',
+			'The lab validates the detection methods, not the providers’ models: whether a probe can tell quantized from full-precision weights, a capped context from a full one, faked caching from real caching. The size sweep shows how detection gets harder as models grow, so the numbers are read as lower bounds.'
+		],
+		[
+			'Does a flagged gap mean the provider is cheating?',
+			'No. It means the plan behaved measurably differently from the provider’s API on the same requests, by more than honest serving differences explain. Disclosed limits, routing policies or plain bugs can all cause that; providers can reply and their reply is published alongside.'
+		]
+	];
+
 	const probes = [
 		{
 			id: 'logprob',
@@ -20,7 +47,7 @@
 		{
 			id: 'distribution',
 			name: 'Answer distribution',
-			needs: 'nothing beyond text',
+			needs: 'reasoning switched off (no logprobs needed)',
 			how: 'Short open questions (“name an animal”, “pick a number”) are sampled 32 times each at temperature 1. We measure the total variation between the two answer distributions per prompt and subtract what label-shuffling produces, which removes the bias finite samples add.'
 		},
 		{
@@ -150,4 +177,20 @@
 			determined adversary.
 		</li>
 	</ul>
+	<h2 id="faq" class="mt-14 scroll-mt-20 text-2xl font-semibold">Questions</h2>
+	<div class="mt-4 divide-y divide-line border-y border-line">
+		{#each faq as [q, a] (q)}
+			<details class="group py-4">
+				<summary
+					class="flex cursor-pointer list-none items-center justify-between gap-4 font-medium"
+				>
+					{q}
+					<span class="text-muted transition-transform group-open:rotate-45" aria-hidden="true"
+						>+</span
+					>
+				</summary>
+				<p class="mt-2 text-sm text-ink-2">{a}</p>
+			</details>
+		{/each}
+	</div>
 </article>

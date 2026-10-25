@@ -8,18 +8,26 @@ export type Model = {
 	name: string;
 	maker: string;
 	open_weights: boolean;
+	forced_reasoning?: boolean;
 	notes?: string;
 };
+export type Tier = { name: string; price: number; currency: string; limits: string };
+export type Report = { date: string; text: string; url: string };
 export type Plan = {
 	slug: string;
 	provider: string;
 	name: string;
-	price: number;
-	currency: string;
-	limits: string;
+	kind: 'maker' | 'reseller';
+	metering: string;
 	models: string[];
+	tiers: Tier[];
+	confidence: 'official' | 'mixed' | 'third-party';
+	availability?: string;
 	tos_risk: 'high' | 'medium' | 'low' | 'unknown';
 	tos_note?: string;
+	notes?: string[];
+	reports?: Report[];
+	sources?: string[];
 };
 export type EndpointInfo = {
 	slug: string;
@@ -28,13 +36,26 @@ export type EndpointInfo = {
 	model: string | null;
 	api_model: string;
 	base_url: string;
+	logprobs: boolean;
+	thinking_off: boolean;
+	verified: boolean;
+	notes: string | null;
+};
+export type AuditPair = {
+	plan: string;
+	target: EndpointInfo;
+	reference: EndpointInfo;
+	/** probe name -> null if it can run on this pair, else the reason it cannot */
+	probes: Record<string, string | null>;
 };
 export type Catalog = {
 	snapshot: string;
+	fx: Record<string, number>;
 	providers: Provider[];
 	models: Model[];
 	plans: Plan[];
-	audits: { plan: string; target: EndpointInfo; reference: EndpointInfo }[];
+	probes: Record<string, { title: string; detects: string }>;
+	audits: AuditPair[];
 };
 
 export type AuditStatus = 'match' | 'gap' | 'inconclusive';
@@ -165,6 +186,33 @@ export function planStatus(plan: string): AuditStatus | 'untested' {
 	if (done.every((r) => r.latest!.status === 'match') && done.length === rows.length)
 		return 'match';
 	return 'inconclusive';
+}
+
+/** Approximate USD for a price, using the catalog's snapshot exchange rates. */
+export function usd(price: number, currency: string): number {
+	return currency === 'USD' ? price : price * (catalog.fx[currency] ?? NaN);
+}
+
+const symbol: Record<string, string> = { USD: '$', CNY: '¥' };
+export function fmtPrice(price: number, currency: string): string {
+	return `${symbol[currency] ?? currency + ' '}${price}`;
+}
+
+/** Cheapest and dearest tier, in approximate USD. */
+export function priceRange(plan: Plan): [number, number] {
+	const xs = plan.tiers.map((t) => usd(t.price, t.currency));
+	return [Math.min(...xs), Math.max(...xs)];
+}
+
+/** How many of the battery's probes can run on each of a plan's audit pairs (best pair). */
+export function coverage(plan: string): { runnable: number; total: number } {
+	const pairs = catalog.audits.filter((a) => a.plan === plan);
+	const total = Object.keys(catalog.probes).length;
+	const runnable = Math.max(
+		0,
+		...pairs.map((a) => Object.values(a.probes).filter((r) => r === null).length)
+	);
+	return { runnable, total };
 }
 
 /** Path of a data file as served by the site (see scripts/sync-data.mjs). */

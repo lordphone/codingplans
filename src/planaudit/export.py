@@ -45,8 +45,11 @@ def catalog_doc(cat: Catalog) -> dict[str, Any]:
                     else "how to switch reasoning off on this endpoint is not documented yet"
                 )
             elif reason and "logprobs" in reason:
-                side = "the plan" if ref.logprobs else "the official API"
-                reason = f"{side} does not return logprobs"
+                if not ref.logprobs and not tgt.logprobs:
+                    reason = "neither endpoint returns logprobs"
+                else:
+                    side = "the plan" if ref.logprobs else "the official API"
+                    reason = f"{side} does not return logprobs"
             runnable[name] = reason
         audits.append(
             {

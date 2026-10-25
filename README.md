@@ -74,7 +74,7 @@ Needs keys for both sides of a pair (copy `.env.example` to `.env`).
 ```bash
 uv run planaudit preflight                                   # one tiny call per endpoint with a key
 uv run planaudit audit --all --dry-run                       # what would run, which keys are missing
-uv run planaudit audit --plan zai-glm-coding-lite --tier quick --calibrate
+uv run planaudit audit --plan zai-glm-coding --tier quick --calibrate
 ```
 
 Results are written to `data/audits/<plan>/<endpoint>/<date>_<tier>.json` and

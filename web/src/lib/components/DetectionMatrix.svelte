@@ -9,6 +9,16 @@
 	}: { family: LabFamily; selected: string; probeOrder: string[] } = $props();
 
 	const probes = $derived(probeOrder.filter((p) => p in family.probes));
+	const short: Record<string, string> = {
+		logprob: 'Next token',
+		distribution: 'Answers',
+		arithmetic: 'Arithmetic',
+		code: 'Code',
+		needle: 'Long context',
+		cache: 'Caching',
+		accounting: 'Tokens',
+		speed: 'Speed'
+	};
 	const honestRows = $derived(
 		family.variants.filter((v) => v.kind === 'honest' && v.id !== family.reference)
 	);
@@ -37,7 +47,7 @@
 </script>
 
 <div class="card overflow-x-auto">
-	<table class="w-full min-w-[760px] border-separate border-spacing-0 text-sm">
+	<table class="w-full min-w-[680px] border-separate border-spacing-0 text-sm">
 		<thead>
 			<tr>
 				<th
@@ -47,7 +57,9 @@
 				</th>
 				{#each probes as p (p)}
 					<th class="px-1.5 py-3 text-center text-xs font-medium text-muted">
-						<span class="block leading-tight">{family.probes[p].title}</span>
+						<span class="block leading-tight" title={family.probes[p].title}
+							>{short[p] ?? family.probes[p].title}</span
+						>
 					</th>
 				{/each}
 			</tr>
@@ -70,7 +82,7 @@
 				>
 					<th
 						scope="row"
-						class="sticky left-0 z-10 border-t border-line bg-inherit px-4 py-2 text-left font-normal"
+						class="sticky left-0 z-10 w-56 min-w-52 border-t border-line bg-surface px-4 py-2 text-left font-normal"
 					>
 						<button
 							type="button"
@@ -135,7 +147,7 @@
 				>
 					<th
 						scope="row"
-						class="sticky left-0 z-10 border-t border-line bg-inherit px-4 py-2 text-left font-normal"
+						class="sticky left-0 z-10 w-56 min-w-52 border-t border-line bg-surface px-4 py-2 text-left font-normal"
 					>
 						<button
 							type="button"
@@ -154,7 +166,7 @@
 							{:else if r.requests_for_95 != null}
 								{@const c = shade(r.requests_for_95)}
 								<span
-									class="num inline-block min-w-14 rounded px-1.5 py-1 text-xs font-medium"
+									class="num inline-block min-w-12 rounded px-1.5 py-1 text-xs font-medium"
 									style:background={c}
 									style:color={darkText(c) ? '#0b0b0b' : '#ffffff'}
 									>{fmtRequests(r.requests_for_95)}</span

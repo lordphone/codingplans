@@ -77,6 +77,7 @@
 			<div class="flex gap-5 sm:flex-col sm:items-end sm:gap-1.5">
 				<a class="link" href={resolve('/method')}>Method</a>
 				<a class="link" href={resolve('/data')}>Dataset</a>
+				<a class="link" href={resolve('/about')}>Corrections</a>
 				<a class="link" href={site.repo}>Source code</a>
 			</div>
 		</div>

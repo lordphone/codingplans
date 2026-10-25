@@ -23,7 +23,7 @@
 		['Margins and power curves → data/lab/', 'uv run planaudit lab analyze'],
 		[
 			'Audit a plan (needs both API keys)',
-			'uv run planaudit audit --plan zai-glm-coding-lite --tier quick'
+			'uv run planaudit audit --plan zai-glm-coding --tier quick'
 		]
 	];
 </script>
