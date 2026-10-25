@@ -98,6 +98,9 @@ class DistributionProbe(Probe):
     detects = "quantization, model swap"
     effect_name = "excess total variation"
     default_margin = 0.05
+    # With forced reasoning, an 8-token budget is spent before any answer
+    # appears and both sides would compare empty strings: a silent pass.
+    requires_thinking_off = True
     defaults = {"n_items": 30, "samples": 32, "temperature": 1.0, "max_tokens": 8, "seed": 1}
 
     def items(self) -> list[Item]:

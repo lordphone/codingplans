@@ -14,7 +14,10 @@ def _catalog(ref_url: str, tgt_url: str):
         {
             "providers": [{"slug": "p", "name": "P", "url": "x"}],
             "models": [{"slug": "m", "name": "M", "maker": "p", "open_weights": True}],
-            "plans": [{"slug": "plan", "provider": "p", "name": "Plan", "models": ["m"]}],
+            "plans": [
+                {"slug": "plan", "provider": "p", "name": "Plan", "kind": "maker", "models": ["m"],
+                 "tiers": [{"name": "T", "price": 1, "currency": "USD", "limits": "-"}]}
+            ],
             "endpoints": [
                 {"slug": "ref", "role": "official", "provider": "p", "model": "m",
                  "api_model": "fake-model", "base_url": ref_url, "thinking_off": {},
@@ -47,3 +50,9 @@ def test_audit_flags_degraded_plan_and_passes_honest(fake_endpoint, monkeypatch)
         )  # fmt: skip
         assert res["status"] == expect, res["verdicts"]
         assert all("q_value" in v for v in res["verdicts"])
+
+
+def test_repo_catalog_is_consistent():
+    from planaudit.catalog import load
+
+    assert load().validate() == []

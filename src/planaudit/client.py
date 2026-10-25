@@ -140,7 +140,7 @@ class ChatClient:
         self._interval = endpoint.min_interval_s if min_interval_s is None else min_interval_s
         self._pace_lock = asyncio.Lock()
         self._next_start = 0.0
-        headers = {"User-Agent": endpoint.user_agent or DEFAULT_UA}
+        headers = {"User-Agent": endpoint.user_agent or DEFAULT_UA, **endpoint.headers}
         if endpoint.api_key:
             headers["Authorization"] = f"Bearer {endpoint.api_key}"
         self._http = httpx.AsyncClient(

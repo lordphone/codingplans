@@ -12,24 +12,64 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .catalog import Catalog
+from . import probes as probe_registry
+from .catalog import Catalog, Endpoint
 from .paths import DATA
 
 
+def _endpoint_doc(e: Endpoint) -> dict[str, Any]:
+    return e.public() | {
+        "logprobs": e.logprobs,
+        "thinking_off": e.can_disable_thinking,
+        "verified": e.verified,
+        "notes": e.notes,
+    }
+
+
 def catalog_doc(cat: Catalog) -> dict[str, Any]:
+    """Catalog for the site, including which probes each audit pair can run
+    (decided by each probe's own `unusable()`, so the site never guesses)."""
+    battery = list(probe_registry.TIERS["standard"])
+    forced = {m["slug"] for m in cat.models if m.get("forced_reasoning")}
+    audits = []
+    for a in cat.audits:
+        ref, tgt = cat.endpoints[a.reference], cat.endpoints[a.target]
+        runnable = {}
+        for name in battery:
+            p = probe_registry.PROBES[name]()
+            reason = p.unusable(ref) or p.unusable(tgt)
+            if reason and "reasoning" in reason:
+                reason = (
+                    "this model always reasons before answering"
+                    if tgt.model in forced
+                    else "how to switch reasoning off on this endpoint is not documented yet"
+                )
+            elif reason and "logprobs" in reason:
+                side = "the plan" if ref.logprobs else "the official API"
+                reason = f"{side} does not return logprobs"
+            runnable[name] = reason
+        audits.append(
+            {
+                "plan": a.plan,
+                "target": _endpoint_doc(tgt),
+                "reference": _endpoint_doc(ref),
+                "probes": runnable,
+            }
+        )
     return {
         "snapshot": cat.snapshot,
+        "fx": cat.fx,
         "providers": cat.providers,
         "models": cat.models,
         "plans": cat.plans,
-        "audits": [
-            {
-                "plan": a.plan,
-                "target": cat.endpoints[a.target].public(),
-                "reference": cat.endpoints[a.reference].public(),
+        "probes": {
+            n: {
+                "title": probe_registry.PROBES[n].title,
+                "detects": probe_registry.PROBES[n].detects,
             }
-            for a in cat.audits
-        ],
+            for n in battery
+        },
+        "audits": audits,
     }
 
 

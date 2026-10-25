@@ -1,5 +1,8 @@
 {
  "snapshot": "2026-10-20",
+ "fx": {
+  "CNY": 0.14
+ },
  "providers": [
   {
    "slug": "zai",
@@ -24,6 +27,49 @@
    "name": "Alibaba Cloud Model Studio",
    "maker_of": "Qwen",
    "url": "https://www.alibabacloud.com/help/en/model-studio/coding-plan"
+  },
+  {
+   "slug": "xiaomi",
+   "name": "Xiaomi MiMo",
+   "maker_of": "MiMo",
+   "url": "https://mimo.mi.com"
+  },
+  {
+   "slug": "stepfun",
+   "name": "StepFun",
+   "maker_of": "Step",
+   "url": "https://platform.stepfun.ai"
+  },
+  {
+   "slug": "volcengine",
+   "name": "Volcengine Ark (ByteDance)",
+   "maker_of": "Doubao",
+   "url": "https://www.volcengine.com/product/ark"
+  },
+  {
+   "slug": "opencode",
+   "name": "OpenCode",
+   "url": "https://opencode.ai"
+  },
+  {
+   "slug": "synthetic",
+   "name": "Synthetic",
+   "url": "https://synthetic.new"
+  },
+  {
+   "slug": "chutes",
+   "name": "Chutes",
+   "url": "https://chutes.ai"
+  },
+  {
+   "slug": "ollama",
+   "name": "Ollama Cloud",
+   "url": "https://ollama.com"
+  },
+  {
+   "slug": "cerebras",
+   "name": "Cerebras",
+   "url": "https://www.cerebras.ai/code"
   }
  ],
  "models": [
@@ -31,7 +77,8 @@
    "slug": "glm-5.3",
    "name": "GLM-5.3",
    "maker": "zai",
-   "open_weights": true
+   "open_weights": true,
+   "notes": "~753B MoE, BF16 and FP8 checkpoints on Hugging Face."
   },
   {
    "slug": "glm-5",
@@ -40,11 +87,18 @@
    "open_weights": true
   },
   {
+   "slug": "glm-4.7",
+   "name": "GLM-4.7",
+   "maker": "zai",
+   "open_weights": true
+  },
+  {
    "slug": "kimi-k3",
    "name": "Kimi K3",
    "maker": "moonshot",
    "open_weights": true,
-   "notes": "Thinking cannot be disabled; temperature is fixed."
+   "forced_reasoning": true,
+   "notes": "Thinking cannot be disabled; sampling is fixed in thinking mode."
   },
   {
    "slug": "kimi-k2.5",
@@ -57,6 +111,7 @@
    "name": "MiniMax-M3.1-Flash",
    "maker": "minimax",
    "open_weights": false,
+   "forced_reasoning": true,
    "notes": "Thinking cannot be disabled; temperature is ignored."
   },
   {
@@ -64,95 +119,528 @@
    "name": "MiniMax-M2.5",
    "maker": "minimax",
    "open_weights": true,
-   "notes": "Retiring 2026-11-18."
+   "notes": "Retiring 2026-11-18; plan requests are routed to M3.1-Flash."
   },
   {
    "slug": "qwen3.6-plus",
    "name": "Qwen3.6-Plus",
    "maker": "alibaba",
    "open_weights": false
+  },
+  {
+   "slug": "mimo-v2.6-pro",
+   "name": "MiMo-V2.6-Pro",
+   "maker": "xiaomi",
+   "open_weights": true,
+   "notes": "~1T MoE, MIT licence."
+  },
+  {
+   "slug": "step-3.7-flash",
+   "name": "Step-3.7-Flash",
+   "maker": "stepfun",
+   "open_weights": false
   }
  ],
  "plans": [
   {
-   "slug": "zai-glm-coding-lite",
+   "slug": "zai-glm-coding",
    "provider": "zai",
-   "name": "GLM Coding Lite",
-   "price": 18,
-   "currency": "USD",
-   "limits": "2,000 credits / 5h · 10,000 / week; off-peak usage billed at 50%",
+   "name": "GLM Coding Plan",
+   "kind": "maker",
+   "metering": "Credits per 5 hours and per week; off-peak usage counts half",
    "models": [
     "glm-5.3"
    ],
+   "confidence": "mixed",
    "tos_risk": "high",
-   "tos_note": "Use is limited to officially supported tools; SDK use may be restricted."
-  },
-  {
-   "slug": "zai-glm-coding-pro",
-   "provider": "zai",
-   "name": "GLM Coding Pro",
-   "price": 80,
-   "currency": "USD",
-   "limits": "12,000 credits / 5h · 60,000 / week",
-   "models": [
-    "glm-5.3"
+   "tos_note": "Use is limited to officially supported coding tools; detected SDK use may restrict benefits, and more than three violations may lead to a ban.",
+   "notes": [
+    "Requests for GLM-5.2 and GLM-5.1 are routed to GLM-5.3, and GLM-4.7 to GLM-5.3-Flash (documented policy).",
+    "Peak hours are Mon–Fri 14:00–18:00 China time."
    ],
-   "tos_risk": "high",
-   "tos_note": "Use is limited to officially supported tools; SDK use may be restricted."
+   "sources": [
+    "https://docs.z.ai/devpack/overview",
+    "https://docs.z.ai/devpack/usage-policy"
+   ],
+   "tiers": [
+    {
+     "name": "Lite",
+     "price": 18,
+     "currency": "USD",
+     "limits": "2,000 credits / 5h · 10,000 / week"
+    },
+    {
+     "name": "Pro",
+     "price": 80,
+     "currency": "USD",
+     "limits": "12,000 credits / 5h · 60,000 / week"
+    },
+    {
+     "name": "Max",
+     "price": 168,
+     "currency": "USD",
+     "limits": "28,000 credits / 5h · 140,000 / week"
+    }
+   ],
+   "reports": [
+    {
+     "date": "2026-03",
+     "text": "Users on r/ZaiGLM reported a GLM-5 quality decline, shorter thinking and degradation past ~80–100K tokens after “performance improvements”. Unverified; no official response found.",
+     "url": "https://efficienist.com/users-report-declining-quality-on-z-ais-glm-5-coding-plans/"
+    }
+   ]
   },
   {
-   "slug": "kimi-code-pro",
+   "slug": "kimi-code",
    "provider": "moonshot",
-   "name": "Kimi Code Pro",
-   "price": 199,
-   "currency": "CNY",
-   "limits": "5-hour rolling window + monthly quota (numbers not published)",
+   "name": "Kimi Code",
+   "kind": "maker",
+   "metering": "5-hour rolling window plus a monthly quota (numbers not published)",
    "models": [
     "kimi-k3"
    ],
+   "confidence": "mixed",
+   "availability": "New subscriptions were paused in July 2026 for lack of compute; check availability.",
    "tos_risk": "medium",
-   "tos_note": "Changing the client User-Agent is treated as a violation; the audit sends its own UA."
+   "tos_note": "Changing the client User-Agent is treated as a violation; the audit sends its own, honest one.",
+   "notes": [
+    "The plan id `kimi-for-coding` is a moving alias (currently K2.8 Preview); audits pin `k3`.",
+    "Moonshot publishes its own Kimi Vendor Verifier for third-party hosts, but not for its own plan."
+   ],
+   "sources": [
+    "https://www.kimi.com/code/docs/en/",
+    "https://www.kimi.com/en/blog/kimi-vendor-verifier"
+   ],
+   "tiers": [
+    {
+     "name": "Plus",
+     "price": 99,
+     "currency": "CNY",
+     "limits": "Smallest coding quota"
+    },
+    {
+     "name": "Pro",
+     "price": 199,
+     "currency": "CNY",
+     "limits": "1M context on K3"
+    },
+    {
+     "name": "Max",
+     "price": 699,
+     "currency": "CNY",
+     "limits": "Largest quota"
+    }
+   ]
   },
   {
-   "slug": "minimax-m-plan-explore",
+   "slug": "minimax-m-plan",
    "provider": "minimax",
-   "name": "M Plan Explore",
-   "price": 55,
-   "currency": "USD",
-   "limits": "3× Go tier; 5-hour and weekly windows (numbers not published)",
+   "name": "M Plan",
+   "kind": "maker",
+   "metering": "One meter for text, image and audio, with 5-hour and weekly windows (numbers not published)",
    "models": [
     "minimax-m3.1-flash"
    ],
+   "confidence": "mixed",
    "tos_risk": "unknown",
-   "tos_note": "No explicit automation ban found."
+   "tos_note": "No explicit automation ban found.",
+   "notes": [
+    "Renamed twice in 2026 (Coding Plan → Token Plan → M Plan) and repriced in August."
+   ],
+   "sources": [
+    "https://platform.minimax.io/docs/guides/pricing-token-plan.md"
+   ],
+   "tiers": [
+    {
+     "name": "Go",
+     "price": 22,
+     "currency": "USD",
+     "limits": "Base quota"
+    },
+    {
+     "name": "Explore",
+     "price": 55,
+     "currency": "USD",
+     "limits": "3× Go"
+    },
+    {
+     "name": "Build",
+     "price": 132,
+     "currency": "USD",
+     "limits": "7.5× Go"
+    }
+   ]
   },
   {
-   "slug": "alibaba-coding-pro",
+   "slug": "alibaba-coding-plan",
    "provider": "alibaba",
-   "name": "Coding Plan Pro",
-   "price": 50,
-   "currency": "USD",
-   "limits": "6,000 requests / 5h · 45,000 / week · 90,000 / month",
+   "name": "Coding Plan (international)",
+   "kind": "reseller",
+   "metering": "Requests per 5 hours, per week and per month",
    "models": [
+    "qwen3.6-plus",
     "glm-5",
     "kimi-k2.5",
-    "minimax-m2.5",
-    "qwen3.6-plus"
+    "minimax-m2.5"
    ],
+   "confidence": "official",
+   "availability": "Slots are limited and restocked daily; the Lite tier is closed.",
    "tos_risk": "high",
-   "tos_note": "Terms forbid using the plan key for automated scripts or other non-interactive use."
+   "tos_note": "Terms forbid using the plan key for automated scripts, application backends or other non-interactive use.",
+   "notes": [
+    "Serves its own Qwen models and resells GLM, Kimi and MiniMax; the reference for each resold model is its maker’s API.",
+    "Documentation says requests may be queued or throttled under load."
+   ],
+   "sources": [
+    "https://www.alibabacloud.com/help/en/model-studio/coding-plan"
+   ],
+   "tiers": [
+    {
+     "name": "Pro",
+     "price": 50,
+     "currency": "USD",
+     "limits": "6,000 requests / 5h · 45,000 / week · 90,000 / month"
+    }
+   ]
+  },
+  {
+   "slug": "xiaomi-mimo-token-plan",
+   "provider": "xiaomi",
+   "name": "MiMo Token Plan",
+   "kind": "maker",
+   "metering": "Monthly credits; 0.8× consumption 00:00–08:00 China time; no 5-hour cap",
+   "models": [
+    "mimo-v2.6-pro"
+   ],
+   "confidence": "mixed",
+   "tos_risk": "unknown",
+   "tos_note": "Intended for listed coding tools; no explicit automation ban found.",
+   "sources": [
+    "https://mimo.mi.com/docs/en-US/tokenplan/Token%20Plan/subscription"
+   ],
+   "tiers": [
+    {
+     "name": "Lite",
+     "price": 6,
+     "currency": "USD",
+     "limits": "4.1B credits / month"
+    },
+    {
+     "name": "Standard",
+     "price": 16,
+     "currency": "USD",
+     "limits": "11B credits / month"
+    },
+    {
+     "name": "Pro",
+     "price": 50,
+     "currency": "USD",
+     "limits": "38B credits / month"
+    },
+    {
+     "name": "Max",
+     "price": 100,
+     "currency": "USD",
+     "limits": "82B credits / month"
+    }
+   ]
+  },
+  {
+   "slug": "stepfun-step-plan",
+   "provider": "stepfun",
+   "name": "Step Plan",
+   "kind": "maker",
+   "metering": "Monthly credits; step-5-preview costs double at peak",
+   "models": [
+    "step-3.7-flash"
+   ],
+   "confidence": "third-party",
+   "tos_risk": "unknown",
+   "tos_note": "Terms not verified.",
+   "sources": [
+    "https://jia.je/kb/en/software/coding_plan.html"
+   ],
+   "tiers": [
+    {
+     "name": "Mini",
+     "price": 49,
+     "currency": "CNY",
+     "limits": "400M credits / month"
+    },
+    {
+     "name": "Plus",
+     "price": 99,
+     "currency": "CNY",
+     "limits": "1.6B credits / month"
+    },
+    {
+     "name": "Pro",
+     "price": 199,
+     "currency": "CNY",
+     "limits": "8B credits / month"
+    },
+    {
+     "name": "Max",
+     "price": 699,
+     "currency": "CNY",
+     "limits": "40B credits / month"
+    }
+   ]
+  },
+  {
+   "slug": "volcengine-ark-coding",
+   "provider": "volcengine",
+   "name": "Ark Coding Plan",
+   "kind": "reseller",
+   "metering": "Requests per 5 hours, per week and per month",
+   "models": [
+    "glm-5.3"
+   ],
+   "confidence": "third-party",
+   "tos_risk": "unknown",
+   "tos_note": "Terms not verified.",
+   "notes": [
+    "The default model id `ark-code-latest` is an auto-routing alias, so audits pin a named model."
+   ],
+   "sources": [
+    "https://codepick.dev/en/guides/ark-coding-plan-guide/"
+   ],
+   "tiers": [
+    {
+     "name": "Lite",
+     "price": 40,
+     "currency": "CNY",
+     "limits": "~1,200 requests / 5h · 9,000 / week · 18,000 / month"
+    },
+    {
+     "name": "Pro",
+     "price": 200,
+     "currency": "CNY",
+     "limits": "5× Lite"
+    }
+   ]
+  },
+  {
+   "slug": "opencode-go",
+   "provider": "opencode",
+   "name": "OpenCode Go",
+   "kind": "reseller",
+   "metering": "Monthly dollar allowance per model; 5 hours may use 20% and a week 50% of it",
+   "models": [
+    "glm-5.3"
+   ],
+   "confidence": "third-party",
+   "tos_risk": "medium",
+   "tos_note": "One subscriber per workspace; requests must carry an OpenCode session header.",
+   "notes": [
+    "Aggregates ~30 models, open and closed, from many vendors."
+   ],
+   "sources": [
+    "https://jia.je/kb/en/software/coding_plan.html"
+   ],
+   "tiers": [
+    {
+     "name": "Go",
+     "price": 10,
+     "currency": "USD",
+     "limits": "Per-model monthly allowance"
+    },
+    {
+     "name": "Go Plus",
+     "price": 40,
+     "currency": "USD",
+     "limits": "2–8× Go"
+    }
+   ]
+  },
+  {
+   "slug": "synthetic",
+   "provider": "synthetic",
+   "name": "Synthetic subscription",
+   "kind": "reseller",
+   "metering": "Weekly-regenerating credits",
+   "models": [
+    "kimi-k3"
+   ],
+   "confidence": "official",
+   "tos_risk": "unknown",
+   "tos_note": "Automation policy not found; states it neither trains on nor stores prompts.",
+   "notes": [
+    "Serving precision is not stated; one listed model is explicitly NVFP4."
+   ],
+   "sources": [
+    "https://synthetic.new/pricing"
+   ],
+   "tiers": [
+    {
+     "name": "Go",
+     "price": 9,
+     "currency": "USD",
+     "limits": "Smallest credit pool"
+    },
+    {
+     "name": "Standard",
+     "price": 30,
+     "currency": "USD",
+     "limits": "Mid credit pool"
+    },
+    {
+     "name": "Big",
+     "price": 90,
+     "currency": "USD",
+     "limits": "Largest pool; beta fast and unmetered modes"
+    }
+   ]
+  },
+  {
+   "slug": "chutes",
+   "provider": "chutes",
+   "name": "Chutes subscription",
+   "kind": "reseller",
+   "metering": "Requests per day with a monthly dollar cap",
+   "models": [
+    "kimi-k3"
+   ],
+   "confidence": "official",
+   "tos_risk": "high",
+   "tos_note": "Subscriptions are for casual, direct use; automated or high-volume workloads must use pay-as-you-go.",
+   "notes": [
+    "Runs open-weight models on TEE (confidential-computing) hardware; precision is not stated."
+   ],
+   "sources": [
+    "https://chutes.ai/pricing"
+   ],
+   "tiers": [
+    {
+     "name": "Plus",
+     "price": 10,
+     "currency": "USD",
+     "limits": "2,000 requests / day · $50 monthly cap"
+    },
+    {
+     "name": "Pro",
+     "price": 20,
+     "currency": "USD",
+     "limits": "5,000 requests / day · $100 monthly cap"
+    }
+   ]
+  },
+  {
+   "slug": "ollama-cloud",
+   "provider": "ollama",
+   "name": "Ollama Cloud",
+   "kind": "reseller",
+   "metering": "Monthly usage credit and a concurrency limit",
+   "models": [
+    "kimi-k3"
+   ],
+   "confidence": "official",
+   "tos_risk": "low",
+   "tos_note": "One account per person.",
+   "notes": [
+    "Discloses that it may serve models in accelerated formats such as NVFP4 on newer GPUs."
+   ],
+   "sources": [
+    "https://ollama.com/pricing"
+   ],
+   "tiers": [
+    {
+     "name": "Pro",
+     "price": 20,
+     "currency": "USD",
+     "limits": "$60 usage credit · 3 concurrent"
+    },
+    {
+     "name": "Max",
+     "price": 100,
+     "currency": "USD",
+     "limits": "$300 usage credit · 10 concurrent"
+    }
+   ]
+  },
+  {
+   "slug": "cerebras-code",
+   "provider": "cerebras",
+   "name": "Cerebras Code",
+   "kind": "reseller",
+   "metering": "Tokens per day plus a per-minute cap",
+   "models": [
+    "glm-4.7"
+   ],
+   "confidence": "third-party",
+   "availability": "Reported sold out as of 2026-10-05.",
+   "tos_risk": "unknown",
+   "tos_note": "Terms not verified.",
+   "notes": [
+    "Serves an older model (GLM-4.7) on wafer-scale hardware at very high speed."
+   ],
+   "sources": [
+    "https://www.cerebras.ai/code"
+   ],
+   "tiers": [
+    {
+     "name": "Pro",
+     "price": 50,
+     "currency": "USD",
+     "limits": "24M tokens / day"
+    },
+    {
+     "name": "Max",
+     "price": 200,
+     "currency": "USD",
+     "limits": "120M tokens / day"
+    }
+   ]
   }
  ],
+ "probes": {
+  "accounting": {
+   "title": "Token accounting",
+   "detects": "hidden prompt injection, tokenizer (model) swap"
+  },
+  "logprob": {
+   "title": "Next-token distribution",
+   "detects": "quantization, model swap"
+  },
+  "distribution": {
+   "title": "Answer distribution",
+   "detects": "quantization, model swap"
+  },
+  "arithmetic": {
+   "title": "Mental arithmetic",
+   "detects": "quantization, model swap"
+  },
+  "code": {
+   "title": "Coding tasks (HumanEval)",
+   "detects": "quality regression"
+  },
+  "needle": {
+   "title": "Long-context recall",
+   "detects": "context truncation, KV-cache quantization"
+  },
+  "cache": {
+   "title": "Prompt caching",
+   "detects": "missing or phantom prompt caching"
+  },
+  "speed": {
+   "title": "Speed",
+   "detects": "throttling, slower serving"
+  }
+ },
  "audits": [
   {
-   "plan": "zai-glm-coding-lite",
+   "plan": "zai-glm-coding",
    "target": {
     "slug": "glm53-zai-coding",
     "role": "plan",
     "provider": "zai",
     "model": "glm-5.3",
     "api_model": "glm-5.3",
-    "base_url": "https://api.z.ai/api/coding/paas/v4"
+    "base_url": "https://api.z.ai/api/coding/paas/v4",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
    },
    "reference": {
     "slug": "glm53-official",
@@ -160,18 +648,36 @@
     "provider": "zai",
     "model": "glm-5.3",
     "api_model": "glm-5.3",
-    "base_url": "https://api.z.ai/api/paas/v4"
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": null,
+    "arithmetic": null,
+    "code": null,
+    "needle": null,
+    "cache": null,
+    "speed": null
    }
   },
   {
-   "plan": "kimi-code-pro",
+   "plan": "kimi-code",
    "target": {
     "slug": "kimi-k3-kimi-code",
     "role": "plan",
     "provider": "moonshot",
     "model": "kimi-k3",
     "api_model": "k3",
-    "base_url": "https://api.kimi.ai/coding/v1"
+    "base_url": "https://api.kimi.ai/coding/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
    },
    "reference": {
     "slug": "kimi-k3-official",
@@ -179,18 +685,36 @@
     "provider": "moonshot",
     "model": "kimi-k3",
     "api_model": "kimi-k3",
-    "base_url": "https://api.moonshot.ai/v1"
+    "base_url": "https://api.moonshot.ai/v1",
+    "logprobs": true,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "this model always reasons before answering",
+    "distribution": "this model always reasons before answering",
+    "arithmetic": "this model always reasons before answering",
+    "code": "this model always reasons before answering",
+    "needle": "this model always reasons before answering",
+    "cache": null,
+    "speed": null
    }
   },
   {
-   "plan": "minimax-m-plan-explore",
+   "plan": "minimax-m-plan",
    "target": {
     "slug": "minimax-m31-mplan",
     "role": "plan",
     "provider": "minimax",
     "model": "minimax-m3.1-flash",
     "api_model": "MiniMax-M3.1-Flash",
-    "base_url": "https://api.minimax.io/v1"
+    "base_url": "https://api.minimax.io/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
    },
    "reference": {
     "slug": "minimax-m31-official",
@@ -198,75 +722,36 @@
     "provider": "minimax",
     "model": "minimax-m3.1-flash",
     "api_model": "MiniMax-M3.1-Flash",
-    "base_url": "https://api.minimax.io/v1"
-   }
-  },
-  {
-   "plan": "alibaba-coding-pro",
-   "target": {
-    "slug": "glm5-alibaba",
-    "role": "plan",
-    "provider": "alibaba",
-    "model": "glm-5",
-    "api_model": "glm-5",
-    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
+    "base_url": "https://api.minimax.io/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
    },
-   "reference": {
-    "slug": "glm5-official",
-    "role": "official",
-    "provider": "zai",
-    "model": "glm-5",
-    "api_model": "glm-5",
-    "base_url": "https://api.z.ai/api/paas/v4"
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "this model always reasons before answering",
+    "arithmetic": "this model always reasons before answering",
+    "code": "this model always reasons before answering",
+    "needle": "this model always reasons before answering",
+    "cache": null,
+    "speed": null
    }
   },
   {
-   "plan": "alibaba-coding-pro",
-   "target": {
-    "slug": "kimi-k2.5-alibaba",
-    "role": "plan",
-    "provider": "alibaba",
-    "model": "kimi-k2.5",
-    "api_model": "kimi-k2.5",
-    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
-   },
-   "reference": {
-    "slug": "kimi-k2.5-official",
-    "role": "official",
-    "provider": "moonshot",
-    "model": "kimi-k2.5",
-    "api_model": "kimi-k2.5",
-    "base_url": "https://api.moonshot.ai/v1"
-   }
-  },
-  {
-   "plan": "alibaba-coding-pro",
-   "target": {
-    "slug": "minimax-m2.5-alibaba",
-    "role": "plan",
-    "provider": "alibaba",
-    "model": "minimax-m2.5",
-    "api_model": "MiniMax-M2.5",
-    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
-   },
-   "reference": {
-    "slug": "minimax-m2.5-official",
-    "role": "official",
-    "provider": "minimax",
-    "model": "minimax-m2.5",
-    "api_model": "MiniMax-M2.5",
-    "base_url": "https://api.minimax.io/v1"
-   }
-  },
-  {
-   "plan": "alibaba-coding-pro",
+   "plan": "alibaba-coding-plan",
    "target": {
     "slug": "qwen36-plus-alibaba",
     "role": "plan",
     "provider": "alibaba",
     "model": "qwen3.6-plus",
     "api_model": "qwen3.6-plus",
-    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1"
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
    },
    "reference": {
     "slug": "qwen36-plus-official",
@@ -274,7 +759,428 @@
     "provider": "alibaba",
     "model": "qwen3.6-plus",
     "api_model": "qwen3.6-plus",
-    "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": null,
+    "arithmetic": null,
+    "code": null,
+    "needle": null,
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "alibaba-coding-plan",
+   "target": {
+    "slug": "glm5-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "glm-5",
+    "api_model": "glm-5",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "glm5-official",
+    "role": "official",
+    "provider": "zai",
+    "model": "glm-5",
+    "api_model": "glm-5",
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": null,
+    "arithmetic": null,
+    "code": null,
+    "needle": null,
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "alibaba-coding-plan",
+   "target": {
+    "slug": "kimi-k2.5-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "kimi-k2.5",
+    "api_model": "kimi-k2.5",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "kimi-k2.5-official",
+    "role": "official",
+    "provider": "moonshot",
+    "model": "kimi-k2.5",
+    "api_model": "kimi-k2.5",
+    "base_url": "https://api.moonshot.ai/v1",
+    "logprobs": true,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the plan does not return logprobs",
+    "distribution": null,
+    "arithmetic": null,
+    "code": null,
+    "needle": null,
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "alibaba-coding-plan",
+   "target": {
+    "slug": "minimax-m2.5-alibaba",
+    "role": "plan",
+    "provider": "alibaba",
+    "model": "minimax-m2.5",
+    "api_model": "MiniMax-M2.5",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "minimax-m2.5-official",
+    "role": "official",
+    "provider": "minimax",
+    "model": "minimax-m2.5",
+    "api_model": "MiniMax-M2.5",
+    "base_url": "https://api.minimax.io/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "how to switch reasoning off on this endpoint is not documented yet",
+    "arithmetic": "how to switch reasoning off on this endpoint is not documented yet",
+    "code": "how to switch reasoning off on this endpoint is not documented yet",
+    "needle": "how to switch reasoning off on this endpoint is not documented yet",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "xiaomi-mimo-token-plan",
+   "target": {
+    "slug": "mimo-token-plan",
+    "role": "plan",
+    "provider": "xiaomi",
+    "model": "mimo-v2.6-pro",
+    "api_model": "mimo-v2.6-pro",
+    "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "mimo-official",
+    "role": "official",
+    "provider": "xiaomi",
+    "model": "mimo-v2.6-pro",
+    "api_model": "mimo-v2.6-pro",
+    "base_url": "https://api.xiaomimimo.com/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "how to switch reasoning off on this endpoint is not documented yet",
+    "arithmetic": "how to switch reasoning off on this endpoint is not documented yet",
+    "code": "how to switch reasoning off on this endpoint is not documented yet",
+    "needle": "how to switch reasoning off on this endpoint is not documented yet",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "stepfun-step-plan",
+   "target": {
+    "slug": "step-plan",
+    "role": "plan",
+    "provider": "stepfun",
+    "model": "step-3.7-flash",
+    "api_model": "step-3.7-flash",
+    "base_url": "https://api.stepfun.ai/step_plan/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "step-official",
+    "role": "official",
+    "provider": "stepfun",
+    "model": "step-3.7-flash",
+    "api_model": "step-3.7-flash",
+    "base_url": "https://api.stepfun.ai/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "how to switch reasoning off on this endpoint is not documented yet",
+    "arithmetic": "how to switch reasoning off on this endpoint is not documented yet",
+    "code": "how to switch reasoning off on this endpoint is not documented yet",
+    "needle": "how to switch reasoning off on this endpoint is not documented yet",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "volcengine-ark-coding",
+   "target": {
+    "slug": "glm53-volcengine",
+    "role": "plan",
+    "provider": "volcengine",
+    "model": "glm-5.3",
+    "api_model": "glm-5.3",
+    "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": "Model id for GLM-5.3 on the plan not yet confirmed."
+   },
+   "reference": {
+    "slug": "glm53-official",
+    "role": "official",
+    "provider": "zai",
+    "model": "glm-5.3",
+    "api_model": "glm-5.3",
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "how to switch reasoning off on this endpoint is not documented yet",
+    "arithmetic": "how to switch reasoning off on this endpoint is not documented yet",
+    "code": "how to switch reasoning off on this endpoint is not documented yet",
+    "needle": "how to switch reasoning off on this endpoint is not documented yet",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "opencode-go",
+   "target": {
+    "slug": "glm53-opencode-go",
+    "role": "plan",
+    "provider": "opencode",
+    "model": "glm-5.3",
+    "api_model": "glm-5.3",
+    "base_url": "https://opencode.ai/zen/go/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": "Requires an x-opencode-session header; its expected format is not yet confirmed."
+   },
+   "reference": {
+    "slug": "glm53-official",
+    "role": "official",
+    "provider": "zai",
+    "model": "glm-5.3",
+    "api_model": "glm-5.3",
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "how to switch reasoning off on this endpoint is not documented yet",
+    "arithmetic": "how to switch reasoning off on this endpoint is not documented yet",
+    "code": "how to switch reasoning off on this endpoint is not documented yet",
+    "needle": "how to switch reasoning off on this endpoint is not documented yet",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "synthetic",
+   "target": {
+    "slug": "kimi-k3-synthetic",
+    "role": "plan",
+    "provider": "synthetic",
+    "model": "kimi-k3",
+    "api_model": "hf:moonshotai/Kimi-K3",
+    "base_url": "https://api.synthetic.new/openai/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "kimi-k3-official",
+    "role": "official",
+    "provider": "moonshot",
+    "model": "kimi-k3",
+    "api_model": "kimi-k3",
+    "base_url": "https://api.moonshot.ai/v1",
+    "logprobs": true,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "this model always reasons before answering",
+    "distribution": "this model always reasons before answering",
+    "arithmetic": "this model always reasons before answering",
+    "code": "this model always reasons before answering",
+    "needle": "this model always reasons before answering",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "chutes",
+   "target": {
+    "slug": "kimi-k3-chutes",
+    "role": "plan",
+    "provider": "chutes",
+    "model": "kimi-k3",
+    "api_model": "moonshotai/Kimi-K3-TEE",
+    "base_url": "https://llm.chutes.ai/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": "Subscription terms require pay-as-you-go for automation; model id not yet confirmed."
+   },
+   "reference": {
+    "slug": "kimi-k3-official",
+    "role": "official",
+    "provider": "moonshot",
+    "model": "kimi-k3",
+    "api_model": "kimi-k3",
+    "base_url": "https://api.moonshot.ai/v1",
+    "logprobs": true,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "this model always reasons before answering",
+    "distribution": "this model always reasons before answering",
+    "arithmetic": "this model always reasons before answering",
+    "code": "this model always reasons before answering",
+    "needle": "this model always reasons before answering",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "ollama-cloud",
+   "target": {
+    "slug": "kimi-k3-ollama",
+    "role": "plan",
+    "provider": "ollama",
+    "model": "kimi-k3",
+    "api_model": "kimi-k3:cloud",
+    "base_url": "https://ollama.com/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "kimi-k3-official",
+    "role": "official",
+    "provider": "moonshot",
+    "model": "kimi-k3",
+    "api_model": "kimi-k3",
+    "base_url": "https://api.moonshot.ai/v1",
+    "logprobs": true,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "this model always reasons before answering",
+    "distribution": "this model always reasons before answering",
+    "arithmetic": "this model always reasons before answering",
+    "code": "this model always reasons before answering",
+    "needle": "this model always reasons before answering",
+    "cache": null,
+    "speed": null
+   }
+  },
+  {
+   "plan": "cerebras-code",
+   "target": {
+    "slug": "glm47-cerebras",
+    "role": "plan",
+    "provider": "cerebras",
+    "model": "glm-4.7",
+    "api_model": "zai-glm-4.7",
+    "base_url": "https://api.cerebras.ai/v1",
+    "logprobs": false,
+    "thinking_off": false,
+    "verified": false,
+    "notes": null
+   },
+   "reference": {
+    "slug": "glm47-official",
+    "role": "official",
+    "provider": "zai",
+    "model": "glm-4.7",
+    "api_model": "glm-4.7",
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "logprobs": false,
+    "thinking_off": true,
+    "verified": false,
+    "notes": null
+   },
+   "probes": {
+    "accounting": null,
+    "logprob": "the official API does not return logprobs",
+    "distribution": "how to switch reasoning off on this endpoint is not documented yet",
+    "arithmetic": "how to switch reasoning off on this endpoint is not documented yet",
+    "code": "how to switch reasoning off on this endpoint is not documented yet",
+    "needle": "how to switch reasoning off on this endpoint is not documented yet",
+    "cache": null,
+    "speed": null
    }
   }
  ]

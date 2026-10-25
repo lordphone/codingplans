@@ -33,10 +33,12 @@ class Endpoint:
     thinking_off: dict[str, Any] | None = None
     logprobs: bool = False
     extra_params: dict[str, Any] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)  # extra HTTP headers some plans require
     user_agent: str | None = None
     max_concurrency: int = 2
     min_interval_s: float = 0.5  # pacing between request starts
     verified: bool = False
+    notes: str | None = None
 
     @property
     def env_prefix(self) -> str:
@@ -86,6 +88,7 @@ class Audit:
 @dataclass(frozen=True)
 class Catalog:
     snapshot: str
+    fx: dict[str, float]
     providers: list[dict[str, Any]]
     models: list[dict[str, Any]]
     plans: list[dict[str, Any]]
@@ -112,6 +115,13 @@ class Catalog:
         models = {m["slug"] for m in self.models}
         plans = {p["slug"]: p for p in self.plans}
         for p in self.plans:
+            if p.get("kind") not in ("maker", "reseller"):
+                problems.append(f"plan {p['slug']}: kind must be 'maker' or 'reseller'")
+            if not p.get("tiers"):
+                problems.append(f"plan {p['slug']}: no tiers")
+            for t in p.get("tiers", []):
+                if t.get("currency") not in ("USD", *self.fx):
+                    problems.append(f"plan {p['slug']}: no fx rate for {t.get('currency')}")
             if p["provider"] not in providers:
                 problems.append(f"plan {p['slug']}: unknown provider {p['provider']}")
             problems += [
@@ -155,6 +165,7 @@ def parse(raw: dict[str, Any]) -> Catalog:
     endpoints = {e["slug"]: _endpoint(e) for e in raw.get("endpoints", [])}
     return Catalog(
         snapshot=raw.get("snapshot", ""),
+        fx=raw.get("fx", {}),
         providers=raw.get("providers", []),
         models=raw.get("models", []),
         plans=raw.get("plans", []),
